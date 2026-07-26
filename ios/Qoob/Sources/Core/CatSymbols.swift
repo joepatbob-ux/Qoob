@@ -52,6 +52,19 @@ enum CatSymbol: Int, CaseIterable {
         }
     }
 
+    /// Asset-catalog image name for optional hand-made face art. If present in
+    /// the bundle it replaces the procedural glyph for this face.
+    var assetName: String {
+        switch self {
+        case .face: return "cat_face"
+        case .butt: return "cat_butt"
+        case .paws: return "cat_paws"
+        case .dot: return "cat_dot"
+        case .ring: return "cat_ring"
+        case .triangle: return "cat_triangle"
+        }
+    }
+
     // MARK: - Glyph drawing
 
     /// Draws this symbol's shapes centred in `rect` using `ink`.

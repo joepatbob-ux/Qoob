@@ -195,29 +195,23 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         art.name = "cubeArt"
         container.addChildNode(art)
 
-        // Body: accent colour per face.
+        // Body: fur texture (tinted per face) if provided, else accent colour.
         let box = SCNBox(width: cubeSize, height: cubeSize, length: cubeSize,
                          chamferRadius: cubeSize * 0.06)
         let order: [Face] = [.front, .right, .back, .left, .up, .down]
-        box.materials = order.map { face in
-            let color = GamePalette.color(colors[face] ?? 0)
-            let m = SCNMaterial()
-            m.diffuse.contents = color
-            m.emission.contents = color.withAlphaComponent(0.10)
-            m.roughness.contents = 0.5
-            m.metalness.contents = 0.0
-            return m
-        }
+        box.materials = order.map { bodyMaterial(colors[$0] ?? 0) }
         let bodyNode = SCNNode(geometry: box)
         bodyNode.castsShadow = true
         art.addChildNode(bodyNode)
 
-        // Glyph decals, one oriented plane per face.
+        // Glyph decals, one oriented plane per face — hand-made face art if
+        // provided, else the procedural glyph.
         let half = Double(cubeSize) / 2.0 + 0.004   // proud of the face, avoids z-fighting
         for face in Face.allCases {
+            let index = colors[face] ?? 0
             let plane = SCNPlane(width: cubeSize * 0.86, height: cubeSize * 0.86)
             let m = SCNMaterial()
-            m.diffuse.contents = SymbolTextures.decal(colors[face] ?? 0)
+            m.diffuse.contents = BundledTextures.faceArt(index) ?? SymbolTextures.decal(index)
             m.isDoubleSided = false
             plane.firstMaterial = m
             let decal = SCNNode(geometry: plane)
@@ -259,8 +253,67 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         }
     }
 
+    // MARK: - Materials & tiling
+
+    /// Cube-body material for one face: fur (tinted by the face's accent
+    /// colour) if the texture exists, otherwise a flat accent colour.
+    private func bodyMaterial(_ index: Int) -> SCNMaterial {
+        let accent = GamePalette.color(index)
+        let m = SCNMaterial()
+        if let fur = BundledTextures.fur {
+            m.diffuse.contents = fur
+            m.multiply.contents = accent               // tint the grey fur per face
+            setTiling(m.diffuse, SCNMatrix4MakeScale(1.5, 1.5, 1))
+            if let n = BundledTextures.furNormal {
+                m.normal.contents = n
+                setTiling(m.normal, SCNMatrix4MakeScale(1.5, 1.5, 1))
+            }
+            m.roughness.contents = 0.9
+        } else {
+            m.diffuse.contents = accent
+            m.roughness.contents = 0.5
+        }
+        m.emission.contents = accent.withAlphaComponent(0.08)
+        m.metalness.contents = 0.0
+        return m
+    }
+
+    private func setTiling(_ prop: SCNMaterialProperty, _ transform: SCNMatrix4) {
+        prop.wrapS = .repeat
+        prop.wrapT = .repeat
+        prop.contentsTransform = transform
+    }
+
+    /// A carpet ground plane under the whole board (or a subtle flat colour).
+    private func addGround(_ board: BoardModel) {
+        let extent = Double(max(board.width, board.height)) + 6
+        let plane = SCNPlane(width: CGFloat(extent), height: CGFloat(extent))
+        let m = SCNMaterial()
+        if let carpet = BundledTextures.carpet {
+            m.diffuse.contents = carpet
+            setTiling(m.diffuse, SCNMatrix4MakeScale(Float(extent), Float(extent), 1))
+            if let n = BundledTextures.carpetNormal {
+                m.normal.contents = n
+                setTiling(m.normal, SCNMatrix4MakeScale(Float(extent), Float(extent), 1))
+            }
+            m.roughness.contents = 0.95
+        } else {
+            m.diffuse.contents = GamePalette.background
+            m.roughness.contents = 1.0
+        }
+        let node = SCNNode(geometry: plane)
+        node.eulerAngles.x = -.pi / 2
+        node.position = v3(Double(board.width - 1) / 2.0,
+                           -Double(tileThickness) - 0.02,
+                           Double(board.height - 1) / 2.0)
+        node.castsShadow = false
+        boardNode.addChildNode(node)
+    }
+
+    private let tileThickness: CGFloat = 0.12
+
     private func buildBoard(_ board: BoardModel) {
-        let tileThickness: CGFloat = 0.12
+        addGround(board)
         let gap: CGFloat = 0.06
         let size = cubeSize - gap
 
@@ -274,10 +327,22 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                     // Show the depiction the player must land face-down here.
                     mat.diffuse.contents = SymbolTextures.tile(target)
                     mat.emission.contents = GamePalette.color(target).withAlphaComponent(0.10)
+                    mat.roughness.contents = 0.85
+                } else if let carpet = BundledTextures.carpet {
+                    // Continuous carpet across cells: offset each tile's UVs by
+                    // its grid coords so the (seamless) pattern flows unbroken.
+                    let uv = SCNMatrix4MakeTranslation(Float(col), Float(row), 0)
+                    mat.diffuse.contents = carpet
+                    setTiling(mat.diffuse, uv)
+                    if let n = BundledTextures.carpetNormal {
+                        mat.normal.contents = n
+                        setTiling(mat.normal, uv)
+                    }
+                    mat.roughness.contents = 0.95
                 } else {
                     mat.diffuse.contents = GamePalette.neutralTile
+                    mat.roughness.contents = 0.85
                 }
-                mat.roughness.contents = 0.85
                 box.firstMaterial = mat
 
                 let tile = SCNNode(geometry: box)

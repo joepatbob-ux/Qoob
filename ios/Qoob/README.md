@@ -156,6 +156,7 @@ Sources/
     GameRenderer.swift     the renderer protocol (the seam)
     SceneKitRenderer.swift SceneKit implementation (meshes, camera, animation)
     SceneKitHelpers.swift  SCNVector3 convenience
+    BundledTextures.swift  optional asset-catalog textures (fur/carpet/art)
   Game/
     GameController.swift   orchestrator: state, loop, timer, scoring, input
     GameView.swift         SwiftUI ⇄ renderer bridge + swipe gestures
@@ -169,6 +170,35 @@ Sources/
     Info.plist
 project.yml                XcodeGen spec
 ```
+
+## Adding your own textures (fur, carpet, face art)
+
+The renderer loads optional textures from `Sources/Resources/Assets.xcassets`
+and **falls back to the procedural look when they're absent** — so the empty
+image slots are already there; just drop PNGs in (Xcode ▸ select the image set ▸
+drag your PNG onto the 1×/2×/3× well). No code change needed.
+
+| Asset name | Used for | Fallback if empty |
+|------------|----------|-------------------|
+| `fur_albedo` | cat body, **tinted per face** by the face colour | flat accent colour |
+| `fur_normal` | cat body surface relief | none |
+| `carpet_albedo` | the floor (board tiles + ground), tiled seamlessly | flat neutral colour |
+| `carpet_normal` | floor surface relief | none |
+| `cat_face`, `cat_butt`, `cat_paws`, `cat_dot`, `cat_ring`, `cat_triangle` | per-face emblem art | the procedural glyph |
+
+Notes:
+- Make `fur_albedo` a **greyish** fur — it's multiplied by each face's accent
+  colour, so grey fur becomes ginger/pink/teal/… per face. A pre-coloured fur
+  will look over-saturated.
+- Carpet should be **seamless/tileable**; each board cell offsets the texture by
+  its grid coordinates so a seamless pattern flows unbroken across the floor.
+- For real surface depth, add the `*_normal` maps (derive them from the albedo
+  with a free tool like Materialize or NormalMap-Online).
+- `cat_*` art should be a centred emblem (transparent background reads best, so
+  the fur/colour shows around it). It replaces only the glyph, not the whole
+  face.
+- Tiling density is set in `bodyMaterial` / `addGround` (`SCNMatrix4MakeScale`),
+  easy one-line tweaks.
 
 ## The roll math (why the bottom face is always correct)
 
