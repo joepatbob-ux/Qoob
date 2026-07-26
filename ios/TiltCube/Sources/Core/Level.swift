@@ -61,9 +61,16 @@ struct Level {
                      targets: targets)
     }
 
-    /// A fixed, gentle arrangement of the cube's six faces at level start.
+    /// The cube-cat's face layout at level start:
+    /// front = face, up = butt, down = 4 paws, left = dot, right = ring,
+    /// back = three dots (triangle). Indices are CatSymbol raw values.
     static func startingFaces() -> [Face: Int] {
-        [.up: 0, .down: 1, .left: 2, .right: 3, .front: 4, .back: 5]
+        [.front: CatSymbol.face.rawValue,
+         .up:    CatSymbol.butt.rawValue,
+         .down:  CatSymbol.paws.rawValue,
+         .left:  CatSymbol.dot.rawValue,
+         .right: CatSymbol.ring.rawValue,
+         .back:  CatSymbol.triangle.rawValue]
     }
 }
 

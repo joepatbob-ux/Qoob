@@ -109,8 +109,8 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let color = GamePalette.color(colorIndex)
 
         if let tile = tileNodes[key] {
-            tile.geometry?.firstMaterial?.diffuse.contents = color
-            tile.geometry?.firstMaterial?.emission.contents = color.withAlphaComponent(0.55)
+            // Keep the depiction; brighten the slot to mark it satisfied.
+            tile.geometry?.firstMaterial?.emission.contents = color.withAlphaComponent(0.5)
             tile.runAction(SCNAction.sequence([
                 SCNAction.moveBy(x: 0, y: 0.08, z: 0, duration: 0.12),
                 SCNAction.moveBy(x: 0, y: -0.08, z: 0, duration: 0.18)
@@ -181,10 +181,10 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                          chamferRadius: cubeSize * 0.06)
         let order: [Face] = [.front, .right, .back, .left, .up, .down]
         box.materials = order.map { face in
+            let index = colors[face] ?? 0
             let m = SCNMaterial()
-            let color = GamePalette.color(colors[face] ?? 0)
-            m.diffuse.contents = color
-            m.emission.contents = color.withAlphaComponent(0.18)
+            m.diffuse.contents = SymbolTextures.face(index)      // the cat depiction
+            m.emission.contents = GamePalette.color(index).withAlphaComponent(0.10)
             m.roughness.contents = 0.55
             m.metalness.contents = 0.0
             return m
@@ -207,8 +207,9 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                                  length: size, chamferRadius: 0.03)
                 let mat = SCNMaterial()
                 if let target = cell.target {
-                    mat.diffuse.contents = GamePalette.color(target).withAlphaComponent(0.85)
-                    mat.emission.contents = GamePalette.color(target).withAlphaComponent(0.12)
+                    // Show the depiction the player must land face-down here.
+                    mat.diffuse.contents = SymbolTextures.tile(target)
+                    mat.emission.contents = GamePalette.color(target).withAlphaComponent(0.10)
                 } else {
                     mat.diffuse.contents = GamePalette.neutralTile
                 }
@@ -221,26 +222,38 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                 tileNodes["\(col),\(row)"] = tile
 
                 if let target = cell.target {
-                    let ring = makeRing(color: GamePalette.color(target))
-                    ring.position = v3(Double(col), 0.01, Double(row))
-                    ring.eulerAngles.x = -.pi / 2
-                    boardNode.addChildNode(ring)
-                    ringNodes["\(col),\(row)"] = ring
+                    let highlight = makeHighlight(index: target)
+                    highlight.position = v3(Double(col), 0.02, Double(row))
+                    boardNode.addChildNode(highlight)
+                    ringNodes["\(col),\(row)"] = highlight
                 }
             }
         }
     }
 
-    private func makeRing(color: UIColor) -> SCNNode {
-        let ring = SCNTorus(ringRadius: cubeSize * 0.32, pipeRadius: 0.025)
+    /// A flat, pulsing square frame that hovers just above an unsolved target
+    /// tile. A frame (not a ring) so it never reads as the "ring" cat face.
+    private func makeHighlight(index: Int) -> SCNNode {
+        let plane = SCNPlane(width: cubeSize * 0.96, height: cubeSize * 0.96)
         let mat = SCNMaterial()
-        mat.diffuse.contents = UIColor.white.withAlphaComponent(0.9)
-        mat.emission.contents = color.withAlphaComponent(0.7)
-        ring.firstMaterial = mat
-        let node = SCNNode(geometry: ring)
+        mat.diffuse.contents = SymbolTextures.frame(index)
+        mat.emission.contents = SymbolTextures.frame(index)   // self-lit so it glows
+        mat.isDoubleSided = true
+        mat.blendMode = .add
+        plane.firstMaterial = mat
+
+        let node = SCNNode(geometry: plane)
+        node.eulerAngles.x = -.pi / 2                         // lay flat on the board
+        node.opacity = 0.9
         node.runAction(SCNAction.repeatForever(SCNAction.sequence([
-            SCNAction.scale(to: 1.12, duration: 0.9),
-            SCNAction.scale(to: 1.0, duration: 0.9)
+            SCNAction.group([
+                SCNAction.scale(to: 1.08, duration: 0.9),
+                SCNAction.fadeOpacity(to: 0.55, duration: 0.9)
+            ]),
+            SCNAction.group([
+                SCNAction.scale(to: 1.0, duration: 0.9),
+                SCNAction.fadeOpacity(to: 0.9, duration: 0.9)
+            ])
         ])))
         return node
     }

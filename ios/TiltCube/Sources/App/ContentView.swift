@@ -151,8 +151,8 @@ struct ContentView: View {
     private var overlay: some View {
         switch viewModel.phase {
         case .ready:
-            panel(title: "TiltCube",
-                  subtitle: "Roll the cube onto each glowing tile so its\nmatching face lands on top.",
+            panel(title: "Cube Cat",
+                  subtitle: "Roll the cat so the pictured side lands\nface-down on each glowing tile.",
                   button: "Begin")
         case .won:
             panel(title: "Level \(viewModel.levelIndex + 1) complete",

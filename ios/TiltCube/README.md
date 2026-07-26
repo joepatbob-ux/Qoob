@@ -1,10 +1,26 @@
-# TiltCube — an Endorfun-inspired tilt-and-roll puzzle for iOS
+# TiltCube — a cube-cat tilt-and-roll puzzle for iOS
 
-A calm, meditative colour-matching game. You roll a six-coloured cube around a
-grid by **physically tilting your iPhone or iPad** (gyroscope). Land the cube so
-that its bottom face matches a glowing target tile to clear it. Clear every
-target before the timer runs out. Gentle affirmations and a procedural ambient
+A calm, meditative rolling-puzzle game starring a **cube-cat**: a die whose six
+faces each depict a part of the cat. You roll it around a grid — by **tilting
+your iPhone/iPad** (gyroscope), swiping, or the on-screen D-pad — to land the
+**pictured side face-down** on each glowing target tile. Clear every target
+before the timer runs out. Gentle affirmations and a procedural ambient
 soundtrack accompany each match.
+
+**The cube-cat's six faces** (see `Core/CatSymbols.swift`, drawn procedurally so
+no image assets are needed yet):
+
+| Face | Depiction |
+|------|-----------|
+| front | the cat's **face** |
+| up | the **butt** |
+| down | **4 paws** |
+| left | a single **dot** |
+| right | a **ring** |
+| back | **three dots** in a triangle |
+
+Each tile shows the depiction you must roll onto it; the puzzle is tracking the
+cat's orientation so the right side ends up on the bottom.
 
 This is an **original game inspired by** the 1995 game *Endorfun* — its
 cube-on-a-grid colour-matching feel and meditative tone. It contains **none** of
@@ -70,10 +86,10 @@ buttons/swipes.
 
 ## How to play
 
-Match the cube's **bottom** face colour to a glowing ringed tile to clear it.
-Clear every target before time runs out. Consecutive matches build a streak
-(higher score + a rising bell). Every roll and match gives light haptic
-feedback.
+Roll the cat so the depiction on its **bottom** face matches the picture on a
+glowing target tile — that clears it. Clear every target before time runs out.
+Consecutive matches build a streak (higher score + a rising bell). Every roll
+and match gives light haptic feedback.
 
 ### If a tilt rolls the cube the wrong way
 
@@ -130,9 +146,10 @@ Sources/
     ContentView.swift      SwiftUI HUD + menus + D-pad
   Core/                    ← no rendering-engine imports
     CoreTypes.swift        Face, RollDirection, GridCell, CubeState (roll math)
-    BoardModel.swift       grid + colour-match logic
-    Level.swift            procedural level generation
-    GamePalette.swift      six colours + mantras
+    BoardModel.swift       grid + symbol-match logic
+    Level.swift            procedural level generation + cat face layout
+    CatSymbols.swift       the six cube-cat depictions + generated textures
+    GamePalette.swift      accent colours + mantras
   Rendering/               ← the ONLY place SceneKit lives
     GameRenderer.swift     the renderer protocol (the seam)
     SceneKitRenderer.swift SceneKit implementation (meshes, camera, animation)
