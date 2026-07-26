@@ -175,7 +175,7 @@ struct ContentView: View {
     private var overlay: some View {
         switch viewModel.phase {
         case .ready:
-            panel(title: "Cube Cat",
+            panel(title: "Qoob",
                   subtitle: "Roll the cat so the pictured side lands\nface-down on each glowing tile.",
                   button: "Begin")
         case .won:
