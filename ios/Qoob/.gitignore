@@ -1,10 +1,9 @@
-# Xcode / XcodeGen generated
-*.xcodeproj/
-*.xcworkspace/
+# Xcode — keep the project, ignore per-user + build state
 xcuserdata/
+*.xcuserstate
 DerivedData/
 build/
-*.xcuserstate
+*.xcworkspace/xcuserdata/
 
 # Swift Package Manager
 .build/
