@@ -213,6 +213,12 @@ struct ContentView: View {
 
     private func panel(title: String, subtitle: String, button: String) -> some View {
         VStack(spacing: 22) {
+            if !viewModel.environmentName.isEmpty {
+                Text(viewModel.environmentName.uppercased())
+                    .font(.system(size: 12, weight: .semibold))
+                    .tracking(2)
+                    .foregroundColor(.white.opacity(0.5))
+            }
             Text(title)
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .foregroundColor(.white)

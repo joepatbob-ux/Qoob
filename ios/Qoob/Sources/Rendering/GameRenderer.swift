@@ -40,4 +40,8 @@ protocol GameRenderer: AnyObject {
 
     /// Slide a pushable toy one cell, in sync with the cube's roll.
     func moveItem(from: GridCell, to: GridCell, duration: TimeInterval)
+
+    /// A toy perched on furniture tumbles onto the floor at `landing`, then
+    /// becomes a normal pushable toy.
+    func knockOffToy(fromFurnitureAt perch: GridCell, to landing: GridCell, duration: TimeInterval)
 }

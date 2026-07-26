@@ -3,39 +3,25 @@
 Living design notes so ideas aren't lost. Nothing here is committed scope; it's
 a menu to pull from.
 
-## Environments (themed content) — planned
+## Environments (themed content) — SHIPPED v1
 
-Progress the cat through **different environments**, not just one living room:
+`Environment.swift` themes each level: **Living Room → Kitchen → Bedroom → Yard**
+(cycles every 3 levels). Each sets its floor colour, ground colour, backdrop
+mood, and furniture set (living room: sofa/coffee table/armchair; kitchen:
+counter/dining table/fridge; bedroom: bed/dresser/nightstand; yard: bench/bush/
+planter). Optional per-environment floor textures via `floor_<env>` asset slots.
 
-- **Rooms of a house**: living room, kitchen, bedroom, bathroom, hallway — each
-  with its own floor (carpet / tile / wood), furniture set, palette, and props.
-- **A yard / outdoors**: grass floor, fences, a garden bed, a pond obstacle,
-  flower-pot obstacles.
-- Later: other environments entirely (rooftop, shop, etc.).
+Still to do: per-environment music/ambient audio; more environments; themed
+obstacle *models* (drop-in `bed.usdz` etc. already works via the fallback).
 
-Suggested shape (fits the existing seam cleanly):
-- A `Theme`/`Environment` type in `Core` describing floor material key, furniture
-  kinds allowed, accent palette, ambient tint, and (optional) music.
-- `Level.generate` takes/derives an environment from the level index (e.g. every
-  N levels advances the room), and only spawns that environment's furniture set.
-- `SceneKitRenderer` reads the theme for floor + ambient; furniture/obstacle
-  models are keyed by environment (`kitchen_counter.usdz`, `yard_fence.usdz`, …)
-  reusing the existing bundled-model fallback pattern.
-- No game-core rule changes — it's a content/skin layer over the current board.
+## Knock-off-the-furniture — SHIPPED v1
 
-## Knock-off-the-furniture (mechanic enhancement)
+Some toys start **perched on furniture** (`PerchedToy`). Rolling the cat into
+that furniture **knocks the toy onto the floor** (a tumble animation) for +100,
+after which it's a normal pushable toy. Appears from level 4.
 
-The push-toy mechanic (shipped) is the floor version. The very-cat idea:
-
-- Some toys start **on top of furniture** (a vase on the coffee table).
-- Rolling the cat against that furniture edge **knocks the toy onto the floor**
-  (a adjacent free cell), after which it becomes a normal pushable toy.
-- Bonus flair: a little tumble animation + sound; maybe some items "break" (no
-  points) vs. land safe (points) depending on the drop cell.
-
-Implementation sketch: furniture pieces gain optional `topItem` cells; a roll
-into a furniture cell that carries a top item triggers a knock-off (spawn a toy
-on a chosen adjacent free cell) instead of a plain blocked bump.
+Still to do: "break vs. land safe" variants; toys that must be knocked off before
+their pad can be filled; distinct knock-off sound.
 
 ## Other parked ideas
 

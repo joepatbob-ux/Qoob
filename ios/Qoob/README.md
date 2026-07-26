@@ -206,12 +206,23 @@ The **app icon** is a generated placeholder (`AppIcon.appiconset/icon_1024.png`)
 — replace it with your own 1024×1024 PNG when ready. The cat casts a soft
 shadow onto the floor (tune `shadowRadius` / `shadowColor` in `setupLighting`).
 
+## Environments
+
+Levels are themed and cycle as you progress (`Environment.swift`):
+**Living Room → Kitchen → Bedroom → Yard**, changing every 3 levels. Each sets
+its floor colour, ground colour, backdrop mood, and furniture set (living room:
+sofa/coffee table/armchair · kitchen: counter/dining table/fridge · bedroom:
+bed/dresser/nightstand · yard: garden bench/bush/planter). The current
+environment is shown on the menus. Drop a `floor_<env>` PNG (e.g.
+`floor_kitchen`) into `Assets.xcassets` to texture that floor; otherwise the
+environment's colour is used.
+
 ## The living room (top-down + obstacles)
 
 The camera is near **top-down**, looking down at the floor with a slight lean so
-furniture keeps some dimension (tune `topDownTilt` in `SceneKitRenderer`). The
-floor is scattered with **furniture obstacles** the cat must roll around —
-sofas, a coffee table, an armchair, an ottoman (`Furniture.swift`).
+furniture keeps some dimension (tune `topDownTilt` in `SceneKitRenderer`). Each
+environment's floor is scattered with **furniture obstacles** the cat must roll
+around (`Furniture.swift`).
 
 - Furniture cells are **impassable**: `Level.generate` places pieces, records
   their cells in `blocked`, and `GameController` refuses rolls into them
@@ -233,8 +244,14 @@ points. Toys are optional — they never block winning — and each is generated
 a single push solves it (item at goal−1, with a clear cell behind to push from).
 Pushing into a wall, furniture, or another toy is blocked. See
 `BoardModel` (item state), `GameController.requestRoll` (push resolution), and
-`SceneKitRenderer.moveItem` (the slide). Future: toys that start on furniture and
-get *knocked off* first — see `ROADMAP.md`.
+`SceneKitRenderer.moveItem` (the slide).
+
+### Knock-off toys
+
+From level 4 on, some toys start **perched on furniture** (`PerchedToy`). Roll
+the cat into that furniture and the toy **tumbles onto the floor** for **+100**,
+then becomes a normal pushable toy you can shove onto a pad. See
+`BoardModel.knockOff` and `SceneKitRenderer.knockOffToy`.
 
 ## Progression & records
 

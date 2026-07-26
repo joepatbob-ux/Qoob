@@ -37,6 +37,11 @@ final class SceneKitRenderer: NSObject, GameRenderer {
     /// Pushable toy nodes keyed by their current cell; the goal cells.
     private var itemNodes: [GridCell: SCNNode] = [:]
     private var itemGoalCells: Set<GridCell> = []
+    /// Perched (knock-off) toy nodes keyed by their furniture cell.
+    private var perchedNodes: [GridCell: SCNNode] = [:]
+
+    /// Current environment theme (floor / backdrop / furniture set).
+    private var environment: Environment = .livingRoom
 
     /// Cube edge length in world units.
     private let cubeSize: CGFloat = 1.0
@@ -60,12 +65,17 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         tileNodes.removeAll()
         ringNodes.removeAll()
         itemNodes.removeAll()
+        perchedNodes.removeAll()
         itemGoalCells = Set(level.itemGoals)
+
+        environment = level.environment
+        view.backgroundColor = environment.background
 
         boardNode = SCNNode()
         buildBoard(board)
         buildFurniture(level)
         buildItems(level)
+        buildPerched(level)
         scene.rootNode.addChildNode(boardNode)
 
         cubeNode = makeCubeNode(colors: cube.colors)
@@ -154,6 +164,27 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                 UIColor(white: 1, alpha: 0.35)
         } else {
             node.geometry?.firstMaterial?.emission.contents = UIColor.black
+        }
+    }
+
+    func knockOffToy(fromFurnitureAt perch: GridCell, to landing: GridCell, duration: TimeInterval) {
+        guard let node = perchedNodes[perch] else { return }
+        perchedNodes[perch] = nil
+        itemNodes[landing] = node    // it's now a normal pushable toy
+
+        let dest = itemPosition(col: landing.col, row: landing.row)
+        let fall = SCNAction.move(to: dest, duration: duration)
+        fall.timingMode = .easeIn    // accelerate as it tumbles off
+        let axis = v3(Double(landing.row - perch.row), 0, Double(perch.col - landing.col))
+        let tumble = SCNAction.rotate(by: 2 * .pi, around: axis, duration: duration)
+        let bounce = SCNAction.sequence([
+            SCNAction.scale(to: 1.15, duration: 0.06),
+            SCNAction.scale(to: 1.0, duration: 0.10)
+        ])
+        node.runAction(SCNAction.sequence([SCNAction.group([fall, tumble]), bounce]))
+
+        if itemGoalCells.contains(landing) {
+            node.geometry?.firstMaterial?.emission.contents = UIColor(white: 1, alpha: 0.35)
         }
     }
 
@@ -367,21 +398,24 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         prop.contentsTransform = transform
     }
 
-    /// A carpet ground plane under the whole board (or a subtle flat colour).
+    /// The floor texture for the current environment: a per-environment floor
+    /// PNG if supplied, else the global carpet, else nil (→ flat colour).
+    private func floorTexture() -> UIImage? {
+        BundledTextures.image(environment.floorTextureName) ?? BundledTextures.carpet
+    }
+
+    /// A ground plane under the whole board: floor texture if supplied, else
+    /// the environment's ground colour.
     private func addGround(_ board: BoardModel) {
         let extent = Double(max(board.width, board.height)) + 6
         let plane = SCNPlane(width: CGFloat(extent), height: CGFloat(extent))
         let m = SCNMaterial()
-        if let carpet = BundledTextures.carpet {
-            m.diffuse.contents = carpet
+        if let tex = floorTexture() {
+            m.diffuse.contents = tex
             setTiling(m.diffuse, SCNMatrix4MakeScale(Float(extent), Float(extent), 1))
-            if let n = BundledTextures.carpetNormal {
-                m.normal.contents = n
-                setTiling(m.normal, SCNMatrix4MakeScale(Float(extent), Float(extent), 1))
-            }
             m.roughness.contents = 0.95
         } else {
-            m.diffuse.contents = GamePalette.background
+            m.diffuse.contents = environment.groundColor
             m.roughness.contents = 1.0
         }
         let node = SCNNode(geometry: plane)
@@ -425,8 +459,8 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let holder = SCNNode()
         holder.addChildNode(node)
 
-        // A soft back cushion on sofas/armchairs, along the piece's long edge.
-        if piece.kind == .sofa || piece.kind == .armchair {
+        // A soft back cushion on pieces that have one, along the long edge.
+        if piece.kind.hasBack {
             let backThick: CGFloat = 0.2
             let along = piece.cols >= piece.rows          // long axis is X?
             let back = SCNBox(width: along ? w : backThick,
@@ -497,6 +531,24 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         }
     }
 
+    /// Toys perched on top of furniture, ready to be knocked off.
+    private func buildPerched(_ level: Level) {
+        for p in level.perched {
+            let h = furnitureHeight(at: p.perch, in: level)
+            let toy = makeToy()
+            toy.position = v3(Double(p.perch.col), Double(h) + Double(toyRadius), Double(p.perch.row))
+            boardNode.addChildNode(toy)
+            perchedNodes[p.perch] = toy
+        }
+    }
+
+    private func furnitureHeight(at cell: GridCell, in level: Level) -> CGFloat {
+        for piece in level.furniture where piece.cells.contains(cell) {
+            return piece.kind.height
+        }
+        return 0
+    }
+
     /// A yarn-ball toy the cat pushes.
     private func makeToy() -> SCNNode {
         let ball = SCNSphere(radius: toyRadius)
@@ -541,11 +593,11 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                     mat.diffuse.contents = SymbolTextures.tile(target)
                     mat.emission.contents = GamePalette.color(target).withAlphaComponent(0.10)
                     mat.roughness.contents = 0.85
-                } else if let carpet = BundledTextures.carpet {
-                    // Continuous carpet across cells: offset each tile's UVs by
+                } else if let tex = floorTexture() {
+                    // Continuous floor across cells: offset each tile's UVs by
                     // its grid coords so the (seamless) pattern flows unbroken.
                     let uv = SCNMatrix4MakeTranslation(Float(col), Float(row), 0)
-                    mat.diffuse.contents = carpet
+                    mat.diffuse.contents = tex
                     setTiling(mat.diffuse, uv)
                     if let n = BundledTextures.carpetNormal {
                         mat.normal.contents = n
@@ -553,7 +605,7 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                     }
                     mat.roughness.contents = 0.95
                 } else {
-                    mat.diffuse.contents = GamePalette.neutralTile
+                    mat.diffuse.contents = environment.floorColor
                     mat.roughness.contents = 0.85
                 }
                 box.firstMaterial = mat

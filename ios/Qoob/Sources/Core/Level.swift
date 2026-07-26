@@ -15,6 +15,13 @@ struct Target {
     let colorIndex: Int
 }
 
+/// A toy perched on a furniture cell; rolling the cat into that furniture
+/// knocks it onto `landing` (a free floor cell) for bonus points.
+struct PerchedToy {
+    let perch: GridCell     // the furniture cell it sits on
+    let landing: GridCell   // where it falls to
+}
+
 struct Level {
     let index: Int
     let width: Int
@@ -27,6 +34,8 @@ struct Level {
     let blocked: Set<GridCell>
     let items: [GridCell]        // pushable toys' start cells
     let itemGoals: [GridCell]    // spots to push them onto (bonus points)
+    let environment: Environment
+    let perched: [PerchedToy]    // toys sitting on furniture to knock off
 
     /// Every target colour is reachable by rolling (the cube carries all six
     /// colours), and every target *cell* is placed only in the region the cube
@@ -37,8 +46,9 @@ struct Level {
         // Grid grows gently with progression, capped for phone screens.
         let size = min(5 + index / 2, 8)
         let start = GridCell(col: size / 2, row: size / 2)
+        let env = Environment.forLevel(index)
 
-        // --- Place furniture (impassable) ---
+        // --- Place furniture (impassable), from this environment's set ---
         let pieceCount = min(1 + index / 2, max(1, (size * size) / 8))
         var furniture: [Furniture] = []
         var blocked = Set<GridCell>()
@@ -55,7 +65,7 @@ struct Level {
         var attempts = 0
         while furniture.count < pieceCount && attempts < 300 {
             attempts += 1
-            let kind = FurnitureKind.allCases[Int(rng.next() % UInt64(FurnitureKind.allCases.count))]
+            let kind = env.furnitureKinds[Int(rng.next() % UInt64(env.furnitureKinds.count))]
             let fp = kind.footprints[Int(rng.next() % UInt64(kind.footprints.count))]
             let origin = GridCell(col: Int(rng.next() % UInt64(size)),
                                   row: Int(rng.next() % UInt64(size)))
@@ -114,6 +124,24 @@ struct Level {
             needed.forEach { usedItems.insert($0) }
         }
 
+        // --- Perched toys on furniture (knock-off bonus) ---
+        let perchCount = min(index / 4, 2)
+        var perched: [PerchedToy] = []
+        var pAttempts = 0
+        while perched.count < perchCount && pAttempts < 200 && !furniture.isEmpty {
+            pAttempts += 1
+            let piece = furniture[Int(rng.next() % UInt64(furniture.count))]
+            let perch = piece.cells[Int(rng.next() % UInt64(piece.cells.count))]
+            let (dc, dr) = dirs[Int(rng.next() % 4)]
+            let landing = GridCell(col: perch.col + dc, row: perch.row + dr)
+            if landing.col < 0 || landing.col >= size || landing.row < 0 || landing.row >= size { continue }
+            if blocked.contains(landing) || !reach.contains(landing) { continue }
+            if landing == start || usedItems.contains(landing) { continue }
+            if perched.contains(where: { $0.perch == perch || $0.landing == landing }) { continue }
+            perched.append(PerchedToy(perch: perch, landing: landing))
+            usedItems.insert(landing)
+        }
+
         return Level(index: index,
                      width: size, height: size,
                      startCol: start.col, startRow: start.row,
@@ -122,7 +150,9 @@ struct Level {
                      furniture: furniture,
                      blocked: blocked,
                      items: items,
-                     itemGoals: goals)
+                     itemGoals: goals,
+                     environment: env,
+                     perched: perched)
     }
 
     /// 4-neighbour flood fill of cells reachable from `start` without entering

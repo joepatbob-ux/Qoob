@@ -19,6 +19,7 @@ final class GameViewModel: ObservableObject {
     @Published var phase: GamePhase = .ready
     @Published var score: Int = 0
     @Published var levelIndex: Int = 0
+    @Published var environmentName: String = Environment.forLevel(0).displayName
     @Published var timeRemaining: TimeInterval = 0
     @Published var tilesRemaining: Int = 0
     @Published var itemsRemaining: Int = 0    // toys not yet on a goal

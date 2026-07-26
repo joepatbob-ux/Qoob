@@ -78,6 +78,7 @@ final class GameController {
         streak = 0
         nextRollAllowedAt = 0
         viewModel.levelIndex = index
+        viewModel.environmentName = level.environment.displayName
         viewModel.score = index == 0 ? 0 : viewModel.score
         viewModel.tilesRemaining = board.remaining
         viewModel.itemsRemaining = board.itemsRemaining
@@ -129,7 +130,14 @@ final class GameController {
         let (dCol, dRow) = direction.gridDelta
         let target = GridCell(col: cube.col + dCol, row: cube.row + dRow)
         guard board.passable(col: target.col, row: target.row) else {
-            // Blocked by a wall or furniture — nudge the retry window.
+            // Blocked. If it's furniture with a perched toy, knock it off (the
+            // cat still doesn't move onto the furniture).
+            if let landing = board.knockOff(at: target) {
+                renderer.knockOffToy(fromFurnitureAt: target, to: landing, duration: rollDuration)
+                viewModel.score += 100
+                audio.playMatch(streak: 1)
+                Haptics.match()
+            }
             nextRollAllowedAt = now + restBetweenRolls
             return
         }

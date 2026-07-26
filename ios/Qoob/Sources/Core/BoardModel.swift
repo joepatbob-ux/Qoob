@@ -25,6 +25,7 @@ final class BoardModel {
     let blocked: Set<GridCell>                // furniture cells (impassable)
     private(set) var items: Set<GridCell>     // pushable toys' current cells
     let itemGoals: Set<GridCell>              // spots that score when covered
+    private(set) var perched: [GridCell: GridCell]  // furniture cell → landing cell
 
     init(level: Level) {
         width = level.width
@@ -32,6 +33,9 @@ final class BoardModel {
         blocked = level.blocked
         items = Set(level.items)
         itemGoals = Set(level.itemGoals)
+        var perch: [GridCell: GridCell] = [:]
+        for p in level.perched { perch[p.perch] = p.landing }
+        perched = perch
         cells = Array(
             repeating: Array(repeating: CellModel(), count: level.width),
             count: level.height
@@ -69,9 +73,26 @@ final class BoardModel {
         return itemGoals.contains(to) && !itemGoals.contains(from)
     }
 
-    var totalItems: Int { items.count }
     var itemsOnGoals: Int { items.intersection(itemGoals).count }
-    var itemsRemaining: Int { max(0, totalItems - itemsOnGoals) }
+    /// Pads still to fill (stable even as knocked-off toys are added).
+    var itemsRemaining: Int { max(0, itemGoals.count - itemsOnGoals) }
+
+    // MARK: - Knock-off toys (perched on furniture)
+
+    func perchedLanding(at furnitureCell: GridCell) -> GridCell? {
+        perched[furnitureCell]
+    }
+
+    /// Knocks a perched toy off its furniture onto the floor. Returns the
+    /// landing cell, or nil if there's no perched toy or the landing is now
+    /// occupied. The landed toy becomes a normal pushable toy.
+    @discardableResult
+    func knockOff(at furnitureCell: GridCell) -> GridCell? {
+        guard let landing = perched[furnitureCell], !items.contains(landing) else { return nil }
+        perched[furnitureCell] = nil
+        items.insert(landing)
+        return landing
+    }
 
     func cell(col: Int, row: Int) -> CellModel? {
         guard contains(col: col, row: row) else { return nil }
