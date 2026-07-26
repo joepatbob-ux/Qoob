@@ -54,8 +54,19 @@ final class GameController: NSObject {
         setupCamera()
 
         motion.start()
-        viewModel.motionUnavailable = !motion.isAvailable
         audio.start()
+
+        // Publish sensor availability on the next runloop tick — mutating
+        // @Published state synchronously inside makeUIView would trip
+        // SwiftUI's "modifying state during view update" warning.
+        let available = motion.isAvailable
+        DispatchQueue.main.async { [viewModel] in
+            viewModel.motionUnavailable = !available
+            if !available {
+                // No gyroscope (e.g. Simulator): fall back to manual controls.
+                viewModel.tiltEnabled = false
+            }
+        }
 
         startDisplayLink()
     }
@@ -129,6 +140,7 @@ final class GameController: NSObject {
         levelDeadline = CACurrentMediaTime() + level.timeLimit
         nextRollAllowedAt = 0
         viewModel.phase = .playing
+        Haptics.prepare()
 
         // Check the tile the cube starts on (it may already match).
         _ = resolveMatchAtCube()
@@ -154,9 +166,20 @@ final class GameController: NSObject {
             return
         }
 
-        // Rolling
-        guard let cube = cube, !cube.isRolling, now >= nextRollAllowedAt else { return }
-        guard let direction = motion.rollDirection() else { return }
+        // Tilt-driven rolling (only when the tilt control is enabled).
+        if viewModel.tiltEnabled, let direction = motion.rollDirection() {
+            requestRoll(direction)
+        }
+    }
+
+    /// Single entry point for *every* control scheme — tilt, swipe, or the
+    /// on-screen D-pad all funnel through here so pacing, matching, haptics
+    /// and win detection behave identically.
+    func requestRoll(_ direction: RollDirection) {
+        guard viewModel.phase == .playing else { return }
+        let now = CACurrentMediaTime()
+        guard let cube = cube, let board = board,
+              !cube.isRolling, now >= nextRollAllowedAt else { return }
 
         let didRoll = cube.roll(direction, on: board, duration: rollDuration) { [weak self] in
             guard let self = self else { return }
@@ -166,7 +189,9 @@ final class GameController: NSObject {
                 self.endGame(won: true)
             }
         }
-        if !didRoll {
+        if didRoll {
+            Haptics.roll()
+        } else {
             // Blocked by a wall — nudge the retry window so we don't spin.
             nextRollAllowedAt = now + restBetweenRolls
         }
@@ -184,6 +209,7 @@ final class GameController: NSObject {
             viewModel.score += points
             viewModel.tilesRemaining = board.remaining
             audio.playMatch(streak: streak - 1)
+            Haptics.match()
             viewModel.flash(mantra: GamePalette.randomMantra())
         } else {
             // Landing on a neutral/cleared tile gently cools the streak.

@@ -52,16 +52,28 @@ Select your device, set your signing team on the `TiltCube` target
    `Sources/Resources/Info.plist`.
 5. Run on a device.
 
+## Controls
+
+Three schemes, usable in any combination (toggle them on the menu or the
+in-game chips):
+
+- **Tilt** (real device only) — tilt right/left rolls right/left; tilt the top
+  of the device away from you rolls forward (up the board), toward you rolls
+  back. Whatever pose you hold when a level starts becomes "flat/neutral", so it
+  works lying down or sitting up, and a held tilt keeps rolling one cell at a
+  time.
+- **Buttons** — an on-screen D-pad.
+- **Swipe** — swipe anywhere on the board in a direction; always active.
+
+On the Simulator (no gyroscope) tilt is disabled automatically and you play with
+buttons/swipes.
+
 ## How to play
 
-- **Tilt right/left** → cube rolls right/left.
-- **Tilt the top of the device away from you** → cube rolls forward (up the board);
-  tilt it toward you → cube rolls back.
-- Whatever pose you're holding when a level starts becomes "flat/neutral", so it
-  works lying down or sitting up.
-- A held tilt keeps the cube rolling in that direction, one cell at a time.
-- Match the cube's **bottom** face colour to a glowing ringed tile to clear it.
-  Consecutive matches build a streak (higher score + a rising bell).
+Match the cube's **bottom** face colour to a glowing ringed tile to clear it.
+Clear every target before time runs out. Consecutive matches build a streak
+(higher score + a rising bell). Every roll and match gives light haptic
+feedback.
 
 ### If a tilt rolls the cube the wrong way
 
@@ -89,6 +101,7 @@ Sources/
     Board.swift           grid of tiles + match logic + tile visuals
     Level.swift           procedural level generation
     GamePalette.swift     six colours + mantras
+    Haptics.swift         light roll/match feedback
   Motion/
     MotionManager.swift   CoreMotion tilt → RollDirection
   Audio/

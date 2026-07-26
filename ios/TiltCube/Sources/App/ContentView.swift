@@ -3,7 +3,13 @@
 //  TiltCube
 //
 //  The SwiftUI HUD layered over the SceneKit game: score, timer, tiles left,
-//  the fading mantra, and the start / win / lose overlays.
+//  the fading mantra, control toggles, an on-screen D-pad, and the
+//  start / win / lose overlays.
+//
+//  Control schemes (any combination):
+//    • Tilt   — gyroscope (real device only)
+//    • Buttons — the on-screen D-pad
+//    • Swipe  — always active, handled in GameView
 //
 
 import SwiftUI
@@ -16,23 +22,29 @@ struct ContentView: View {
             GameView(viewModel: viewModel)
                 .ignoresSafeArea()
 
-            // Top status bar
-            VStack {
-                if viewModel.phase == .playing {
+            if viewModel.phase == .playing {
+                VStack {
                     statusBar
+                    controlChips
                     Spacer()
-                    mantraView
-                        .padding(.bottom, 60)
+                    if viewModel.showButtons {
+                        dPad
+                            .padding(.bottom, 12)
+                    }
                 }
+                .padding()
+
+                mantraView
+                    .offset(y: -80)
+                    .allowsHitTesting(false)
             }
-            .padding()
 
             overlay
         }
         .statusBarHidden(true)
     }
 
-    // MARK: - HUD pieces
+    // MARK: - Status bar
 
     private var statusBar: some View {
         HStack {
@@ -43,15 +55,6 @@ struct ContentView: View {
             pill(label: "TIME", value: timeString(viewModel.timeRemaining))
                 .foregroundColor(viewModel.timeRemaining < 10 ? .red : .white)
         }
-    }
-
-    private var mantraView: some View {
-        Text(viewModel.mantra)
-            .font(.system(size: 30, weight: .light, design: .serif))
-            .italic()
-            .foregroundColor(.white)
-            .opacity(viewModel.showMantra ? 0.95 : 0)
-            .shadow(color: .black.opacity(0.5), radius: 8)
     }
 
     private func pill(label: String, value: String) -> some View {
@@ -69,6 +72,79 @@ struct ContentView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
     }
 
+    // MARK: - Control toggles
+
+    private var controlChips: some View {
+        HStack(spacing: 10) {
+            toggleChip(title: "Tilt",
+                       on: viewModel.tiltEnabled,
+                       enabled: !viewModel.motionUnavailable) {
+                viewModel.tiltEnabled.toggle()
+            }
+            toggleChip(title: "Buttons",
+                       on: viewModel.showButtons,
+                       enabled: true) {
+                viewModel.showButtons.toggle()
+            }
+            Spacer()
+        }
+        .padding(.top, 6)
+    }
+
+    private func toggleChip(title: String, on: Bool, enabled: Bool,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(on && enabled ? Color.green : Color.gray.opacity(0.6))
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(.ultraThinMaterial, in: Capsule())
+            .foregroundColor(.white)
+            .opacity(enabled ? 1 : 0.4)
+        }
+        .disabled(!enabled)
+    }
+
+    // MARK: - D-pad
+
+    private var dPad: some View {
+        VStack(spacing: 10) {
+            dirButton(.forward, "chevron.up")
+            HStack(spacing: 64) {
+                dirButton(.left, "chevron.left")
+                dirButton(.right, "chevron.right")
+            }
+            dirButton(.back, "chevron.down")
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private func dirButton(_ direction: RollDirection, _ icon: String) -> some View {
+        Button(action: { viewModel.roll(direction) }) {
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .bold))
+                .frame(width: 62, height: 62)
+                .background(.ultraThinMaterial, in: Circle())
+                .foregroundColor(.white)
+        }
+    }
+
+    // MARK: - Mantra
+
+    private var mantraView: some View {
+        Text(viewModel.mantra)
+            .font(.system(size: 30, weight: .light, design: .serif))
+            .italic()
+            .foregroundColor(.white)
+            .opacity(viewModel.showMantra ? 0.95 : 0)
+            .shadow(color: .black.opacity(0.5), radius: 8)
+    }
+
     // MARK: - Overlays
 
     @ViewBuilder
@@ -76,7 +152,7 @@ struct ContentView: View {
         switch viewModel.phase {
         case .ready:
             panel(title: "TiltCube",
-                  subtitle: "Tilt your device to roll the cube.\nLand a matching face on each glowing tile.",
+                  subtitle: "Roll the cube onto each glowing tile so its\nmatching face lands on top.",
                   button: "Begin")
         case .won:
             panel(title: "Level \(viewModel.levelIndex + 1) complete",
@@ -92,7 +168,7 @@ struct ContentView: View {
     }
 
     private func panel(title: String, subtitle: String, button: String) -> some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 22) {
             Text(title)
                 .font(.system(size: 40, weight: .bold, design: .rounded))
                 .foregroundColor(.white)
@@ -103,8 +179,10 @@ struct ContentView: View {
                 .foregroundColor(.white.opacity(0.8))
                 .multilineTextAlignment(.center)
 
+            controlPicker
+
             if viewModel.motionUnavailable {
-                Text("⚠︎ No motion sensor detected.\nRun on a real device to tilt-and-roll.")
+                Text("No motion sensor detected — use the buttons or swipes.\n(Tilt needs a real device.)")
                     .font(.system(size: 13))
                     .foregroundColor(.yellow.opacity(0.9))
                     .multilineTextAlignment(.center)
@@ -119,10 +197,36 @@ struct ContentView: View {
                     .background(Capsule().fill(Color.white))
             }
         }
-        .padding(40)
+        .padding(36)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
         .padding(32)
     }
+
+    /// Control-scheme chooser shown on the menus.
+    private var controlPicker: some View {
+        VStack(spacing: 8) {
+            Text("CONTROLS")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white.opacity(0.5))
+            HStack(spacing: 10) {
+                toggleChip(title: "Tilt",
+                           on: viewModel.tiltEnabled,
+                           enabled: !viewModel.motionUnavailable) {
+                    viewModel.tiltEnabled.toggle()
+                }
+                toggleChip(title: "Buttons",
+                           on: viewModel.showButtons,
+                           enabled: true) {
+                    viewModel.showButtons.toggle()
+                }
+            }
+            Text("Swipe anywhere works too.")
+                .font(.system(size: 12))
+                .foregroundColor(.white.opacity(0.5))
+        }
+    }
+
+    // MARK: - Helpers
 
     private func timeString(_ t: TimeInterval) -> String {
         let s = Int(t.rounded(.up))

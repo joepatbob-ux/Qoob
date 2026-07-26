@@ -25,11 +25,20 @@ final class GameViewModel: ObservableObject {
     @Published var showMantra: Bool = false
     @Published var motionUnavailable: Bool = false
 
+    // Control scheme. Both can be on at once; swipe gestures are always active.
+    @Published var tiltEnabled: Bool = true
+    @Published var showButtons: Bool = true
+
     /// Set by ContentView so the HUD buttons can drive the game.
     weak var controller: GameController?
 
     func startTapped() {
         controller?.startGame(atLevel: phase == .won ? levelIndex + 1 : levelIndex)
+    }
+
+    /// Manual control entry point (D-pad buttons and swipes).
+    func roll(_ direction: RollDirection) {
+        controller?.requestRoll(direction)
     }
 
     func flash(mantra text: String) {
