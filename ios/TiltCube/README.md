@@ -86,29 +86,69 @@ var invertY = false   // flip if forward/back are reversed
 var threshold = 0.28  // lower = more sensitive
 ```
 
+## Architecture: engine-agnostic core + a renderer seam
+
+The game is split so the **gameplay never depends on how it's drawn**. A
+`GameRenderer` protocol is the only contract between them:
+
+```
+GameController (orchestrator, no rendering imports)
+     │  owns BoardModel + CubeState, timer, scoring, input, audio, haptics
+     │
+     ▼  drives, via the protocol:
+GameRenderer  ──►  present(level:board:cube:)          build visuals
+                   animateRoll(_:to:duration:completion:)  animate one roll
+                   clearTile(col:row:colorIndex:)      tile flourish
+     ▲
+     └── SceneKitRenderer  (the current implementation; Metal-backed)
+```
+
+- **`Core/`** imports no rendering engine at all — it's the whole game as data
+  and rules (`CubeState` face model + roll permutation, `BoardModel` matching,
+  `Level` generation, palette).
+- **`Rendering/`** is the only place SceneKit lives. Everything visual —
+  meshes, materials, camera, lights, the pivot-edge roll animation — is here.
+
+**Why this matters for detailed 3D models / a possible Metal move:**
+
+- *Detailed models now, still on SceneKit:* edit only `SceneKitRenderer.swift`.
+  Swap `makeCubeNode`'s `SCNBox` for a node loaded from a USDZ/OBJ
+  (`SCNScene(named: "cube.usdz")`), keeping the six face materials in the
+  SCNBox order; do the same for tiles. Nothing in `Core/` or `GameController`
+  changes. (SceneKit already renders through Metal — you don't need raw Metal
+  for detailed models.)
+- *Switch engines later:* write one new type conforming to `GameRenderer`
+  (e.g. `RealityKitRenderer` or a custom `MetalRenderer`) and construct it in
+  `GameView.makeUIView` instead of `SceneKitRenderer`. The core is untouched.
+
 ## Project layout
 
 ```
 Sources/
   App/
-    TiltCubeApp.swift     @main entry point
-    ContentView.swift     SwiftUI HUD + menus
+    TiltCubeApp.swift      @main entry point
+    ContentView.swift      SwiftUI HUD + menus + D-pad
+  Core/                    ← no rendering-engine imports
+    CoreTypes.swift        Face, RollDirection, GridCell, CubeState (roll math)
+    BoardModel.swift       grid + colour-match logic
+    Level.swift            procedural level generation
+    GamePalette.swift      six colours + mantras
+  Rendering/               ← the ONLY place SceneKit lives
+    GameRenderer.swift     the renderer protocol (the seam)
+    SceneKitRenderer.swift SceneKit implementation (meshes, camera, animation)
+    SceneKitHelpers.swift  SCNVector3 convenience
   Game/
-    GameView.swift        SwiftUI ⇄ SCNView bridge
-    GameController.swift   scene, camera, frame loop, timer, scoring
-    GameViewModel.swift   observable state for the HUD
-    Cube.swift            the rolling cube: roll math + face tracking (core)
-    Board.swift           grid of tiles + match logic + tile visuals
-    Level.swift           procedural level generation
-    GamePalette.swift     six colours + mantras
-    Haptics.swift         light roll/match feedback
+    GameController.swift   orchestrator: state, loop, timer, scoring, input
+    GameView.swift         SwiftUI ⇄ renderer bridge + swipe gestures
+    GameViewModel.swift    observable state for the HUD
+    Haptics.swift          light roll/match feedback
   Motion/
-    MotionManager.swift   CoreMotion tilt → RollDirection
+    MotionManager.swift    CoreMotion tilt → RollDirection
   Audio/
-    AudioEngine.swift     procedural ambient pad + match bells
+    AudioEngine.swift      procedural ambient pad + match bells
   Resources/
     Info.plist
-project.yml               XcodeGen spec
+project.yml                XcodeGen spec
 ```
 
 ## The roll math (why the bottom face is always correct)
@@ -125,12 +165,15 @@ roll to the **right** (+X), a 90° rotation about the world Z axis gives:
 | left     | down                |
 | up       | left                |
 
-The other three directions are the same idea about the appropriate edge (see
-`RollDirection` and `Cube.applyFacePermutation` in `Cube.swift`). The visual
-animation re-parents the cube under a temporary pivot node placed at that bottom
-edge, rotates 90°, then bakes the transform back — so the cube tips over its
-edge rather than spinning in place, and snaps to the exact grid centre after
-each roll to avoid floating-point drift.
+The other three directions are the same idea about the appropriate edge. The
+permutation lives in `CubeState.applyRoll` (`Core/CoreTypes.swift`); the visual
+animation lives in `SceneKitRenderer.animateRoll` (`Rendering/`), which
+re-parents the cube under a temporary pivot node placed at that bottom edge,
+rotates 90°, then bakes the transform back — so the cube tips over its edge
+rather than spinning in place, and snaps to the exact grid centre after each
+roll to avoid floating-point drift. Because both derive from the same
+`RollDirection`, the logical bottom face and the visible bottom face never
+diverge.
 
 ## Ideas for where to take it next
 

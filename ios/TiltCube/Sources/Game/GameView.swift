@@ -2,8 +2,12 @@
 //  GameView.swift
 //  TiltCube
 //
-//  Hosts the SceneKit SCNView inside SwiftUI, wires it to a GameController, and
-//  adds four-direction swipe gestures as a manual control scheme.
+//  The SwiftUI ⇄ rendering boundary. It picks a concrete GameRenderer
+//  (SceneKitRenderer today), embeds that renderer's view, injects the renderer
+//  into the engine-agnostic GameController, and adds swipe-to-roll gestures.
+//
+//  To try a different engine later, construct a different GameRenderer here;
+//  nothing else in the app changes.
 //
 
 import SwiftUI
@@ -13,8 +17,10 @@ struct GameView: UIViewRepresentable {
     @ObservedObject var viewModel: GameViewModel
 
     func makeUIView(context: Context) -> SCNView {
-        let view = SCNView()
-        let controller = GameController(view: view, viewModel: viewModel)
+        let renderer = SceneKitRenderer()
+        let controller = GameController(renderer: renderer, viewModel: viewModel)
+
+        context.coordinator.renderer = renderer
         context.coordinator.controller = controller
         viewModel.controller = controller
 
@@ -28,9 +34,9 @@ struct GameView: UIViewRepresentable {
         for (dir, sel) in directions {
             let g = UISwipeGestureRecognizer(target: context.coordinator, action: sel)
             g.direction = dir
-            view.addGestureRecognizer(g)
+            renderer.view.addGestureRecognizer(g)
         }
-        return view
+        return renderer.view
     }
 
     func updateUIView(_ uiView: SCNView, context: Context) { }
@@ -38,6 +44,7 @@ struct GameView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator: NSObject {
+        var renderer: SceneKitRenderer?
         var controller: GameController?
 
         // Swipe up = roll away (up the board); mapping mirrors the camera view.

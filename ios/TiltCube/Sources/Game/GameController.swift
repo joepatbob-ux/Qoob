@@ -2,62 +2,49 @@
 //  GameController.swift
 //  TiltCube
 //
-//  Owns the SceneKit scene, builds the board and cube, reads tilt each frame,
-//  drives rolling + colour matching, and runs the level timer. Publishes state
-//  changes to the SwiftUI HUD via GameViewModel.
+//  The engine-agnostic game orchestrator. It owns game state (BoardModel,
+//  CubeState), the frame loop, the timer, scoring, input, audio and haptics,
+//  and drives a `GameRenderer` for all visuals. It imports no rendering engine
+//  — swap SceneKitRenderer for another GameRenderer and this file is unchanged.
 //
 
-import SceneKit
+import Foundation
 import QuartzCore
-import UIKit
 
 @MainActor
-final class GameController: NSObject {
+final class GameController {
 
-    let scnView: SCNView
+    private let renderer: GameRenderer
     private let viewModel: GameViewModel
     private let motion = MotionManager()
     private let audio = AudioEngine()
 
-    private let scene = SCNScene()
-    private let cameraNode = SCNNode()
-    private var board: Board!
-    private var cube: Cube!
-
-    private var displayLink: CADisplayLink?
+    // Game state
+    private var board: BoardModel!
+    private var cube: CubeState!
+    private var currentLevel: Level!
+    private var isRolling = false
+    private var streak = 0
 
     // Timing
+    private var displayLink: CADisplayLink?
     private var levelDeadline: CFTimeInterval = 0
-    private var currentLevel: Level!
 
-    // Roll pacing: brief rest between rolls so a held tilt "rolls downhill"
+    // Roll pacing: a brief rest between rolls so a held tilt "rolls downhill"
     // at a pleasant cadence rather than instantly.
     private let rollDuration: TimeInterval = 0.16
     private let restBetweenRolls: TimeInterval = 0.05
     private var nextRollAllowedAt: CFTimeInterval = 0
 
-    // Match streak drives the rising bell + bonus scoring.
-    private var streak: Int = 0
-
-    init(view: SCNView, viewModel: GameViewModel) {
-        self.scnView = view
+    init(renderer: GameRenderer, viewModel: GameViewModel) {
+        self.renderer = renderer
         self.viewModel = viewModel
-        super.init()
-
-        scnView.scene = scene
-        scnView.backgroundColor = GamePalette.background
-        scnView.antialiasingMode = .multisampling4X
-        scnView.isPlaying = true
-        scnView.rendersContinuously = true
-
-        setupLighting()
-        setupCamera()
 
         motion.start()
         audio.start()
 
         // Publish sensor availability on the next runloop tick — mutating
-        // @Published state synchronously inside makeUIView would trip
+        // @Published state synchronously during view creation would trip
         // SwiftUI's "modifying state during view update" warning.
         let available = motion.isAvailable
         DispatchQueue.main.async { [viewModel] in
@@ -71,79 +58,34 @@ final class GameController: NSObject {
         startDisplayLink()
     }
 
-    // MARK: - Scene setup
-
-    private func setupLighting() {
-        let ambient = SCNNode()
-        ambient.light = SCNLight()
-        ambient.light!.type = .ambient
-        ambient.light!.intensity = 520
-        ambient.light!.color = UIColor(white: 0.9, alpha: 1)
-        scene.rootNode.addChildNode(ambient)
-
-        let key = SCNNode()
-        key.light = SCNLight()
-        key.light!.type = .directional
-        key.light!.intensity = 780
-        key.light!.castsShadow = true
-        key.light!.shadowMode = .deferred
-        key.light!.shadowColor = UIColor(white: 0, alpha: 0.35)
-        key.eulerAngles = v3(-Double.pi / 3, Double.pi / 6, 0)
-        scene.rootNode.addChildNode(key)
-    }
-
-    private func setupCamera() {
-        cameraNode.camera = SCNCamera()
-        cameraNode.camera!.fieldOfView = 42
-        cameraNode.camera!.zNear = 0.1
-        cameraNode.camera!.zFar = 200
-        scene.rootNode.addChildNode(cameraNode)
-    }
-
-    /// Positions the camera above and toward the player so that -Z reads as
-    /// "up the screen" and +X reads as "right".
-    private func aimCamera(at board: Board) {
-        let c = board.worldCenter
-        let span = Double(max(board.width, board.height))
-        cameraNode.position = v3(Double(c.x), span * 1.15, Double(c.z) + span * 1.15)
-        cameraNode.look(at: v3(Double(c.x), 0, Double(c.z)))
-    }
-
-    // MARK: - Game lifecycle
+    // MARK: - Lifecycle
 
     func startGame(atLevel index: Int) {
-        // Tear down any previous board/cube.
-        board?.rootNode.removeFromParentNode()
-        cube?.node.removeFromParentNode()
-
         let level = Level.generate(index: index)
         currentLevel = level
+        board = BoardModel(level: level)
+        cube = CubeState(col: level.startCol, row: level.startRow,
+                         colors: Level.startingFaces())
 
-        board = Board(level: level)
-        scene.rootNode.addChildNode(board.rootNode)
+        renderer.present(level: level, board: board, cube: cube)
 
-        cube = Cube(col: level.startCol, row: level.startRow,
-                    faceColors: Level.startingFaces())
-        scene.rootNode.addChildNode(cube.node)
-
-        aimCamera(at: board)
-
-        // Use the current pose as neutral, so however they hold the device now
+        // Treat the current pose as neutral, so however the device is held now
         // is "flat".
         motion.calibrate()
 
+        isRolling = false
         streak = 0
+        nextRollAllowedAt = 0
         viewModel.levelIndex = index
         viewModel.score = index == 0 ? 0 : viewModel.score
         viewModel.tilesRemaining = board.remaining
         viewModel.timeRemaining = level.timeLimit
         levelDeadline = CACurrentMediaTime() + level.timeLimit
-        nextRollAllowedAt = 0
         viewModel.phase = .playing
         Haptics.prepare()
 
-        // Check the tile the cube starts on (it may already match).
-        _ = resolveMatchAtCube()
+        // The starting cell is guaranteed target-free, but resolve for safety.
+        resolveMatch()
     }
 
     // MARK: - Frame loop
@@ -157,7 +99,6 @@ final class GameController: NSObject {
     @objc private func tick() {
         guard viewModel.phase == .playing else { return }
 
-        // Timer
         let now = CACurrentMediaTime()
         let remaining = max(0, levelDeadline - now)
         viewModel.timeRemaining = remaining
@@ -166,77 +107,73 @@ final class GameController: NSObject {
             return
         }
 
-        // Tilt-driven rolling (only when the tilt control is enabled).
         if viewModel.tiltEnabled, let direction = motion.rollDirection() {
             requestRoll(direction)
         }
     }
 
-    /// Single entry point for *every* control scheme — tilt, swipe, or the
-    /// on-screen D-pad all funnel through here so pacing, matching, haptics
-    /// and win detection behave identically.
-    func requestRoll(_ direction: RollDirection) {
-        guard viewModel.phase == .playing else { return }
-        let now = CACurrentMediaTime()
-        guard let cube = cube, let board = board,
-              !cube.isRolling, now >= nextRollAllowedAt else { return }
+    // MARK: - Rolling (single entry point for tilt, swipe and D-pad)
 
-        let didRoll = cube.roll(direction, on: board, duration: rollDuration) { [weak self] in
+    func requestRoll(_ direction: RollDirection) {
+        guard viewModel.phase == .playing, let board = board, let cube = cube else { return }
+        let now = CACurrentMediaTime()
+        guard !isRolling, now >= nextRollAllowedAt else { return }
+
+        let (dCol, dRow) = direction.gridDelta
+        let target = GridCell(col: cube.col + dCol, row: cube.row + dRow)
+        guard board.contains(col: target.col, row: target.row) else {
+            // Blocked by a wall — nudge the retry window so we don't spin.
+            nextRollAllowedAt = now + restBetweenRolls
+            return
+        }
+
+        isRolling = true
+        Haptics.roll()
+
+        renderer.animateRoll(direction, to: target, duration: rollDuration) { [weak self] in
             guard let self = self else { return }
+            self.cube.applyRoll(direction)          // logical state follows the visual roll
             self.nextRollAllowedAt = CACurrentMediaTime() + self.restBetweenRolls
-            _ = self.resolveMatchAtCube()
+            self.resolveMatch()
+            self.isRolling = false
             if self.board.isComplete {
                 self.endGame(won: true)
             }
         }
-        if didRoll {
-            Haptics.roll()
-        } else {
-            // Blocked by a wall — nudge the retry window so we don't spin.
-            nextRollAllowedAt = now + restBetweenRolls
-        }
     }
 
-    /// Tests the tile under the cube; scores + rewards a match.
-    @discardableResult
-    private func resolveMatchAtCube() -> Bool {
-        guard let cube = cube, let board = board else { return false }
+    /// Tests the tile under the cube; scores and rewards a match.
+    private func resolveMatch() {
+        guard let board = board, let cube = cube else { return }
         let matched = board.tryMatch(col: cube.col, row: cube.row,
                                      downColor: cube.downColorIndex)
         if matched {
             streak += 1
-            let points = 100 + (streak - 1) * 25   // streak bonus
-            viewModel.score += points
+            viewModel.score += 100 + (streak - 1) * 25   // streak bonus
             viewModel.tilesRemaining = board.remaining
+            renderer.clearTile(col: cube.col, row: cube.row, colorIndex: cube.downColorIndex)
             audio.playMatch(streak: streak - 1)
             Haptics.match()
             viewModel.flash(mantra: GamePalette.randomMantra())
-        } else {
+        } else if board.cell(col: cube.col, row: cube.row)?.target == nil {
             // Landing on a neutral/cleared tile gently cools the streak.
-            if board.cell(col: cube.col, row: cube.row)?.target == nil {
-                streak = 0
-            }
+            streak = 0
         }
-        return matched
     }
 
     private func endGame(won: Bool) {
         viewModel.phase = won ? .won : .lost
         if won {
-            let timeBonus = Int(max(0, viewModel.timeRemaining)) * 10
-            viewModel.score += timeBonus
+            viewModel.score += Int(max(0, viewModel.timeRemaining)) * 10  // time bonus
             audio.playWin()
         }
     }
 
-    // MARK: - Teardown
+    // MARK: - Control
 
     func pause() { motion.stop() }
     func resume() { motion.start(); motion.calibrate() }
-
     func recalibrate() { motion.calibrate() }
 
-    deinit {
-        displayLink?.invalidate()
-    }
+    deinit { displayLink?.invalidate() }
 }
