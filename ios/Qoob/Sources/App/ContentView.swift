@@ -27,6 +27,7 @@ struct ContentView: View {
                     statusBar
                     controlChips
                     targetLegend
+                    toysBadge
                     Spacer()
                     if viewModel.showButtons {
                         dPad
@@ -131,6 +132,25 @@ struct ContentView: View {
             .padding(.vertical, 6)
             .background(.ultraThinMaterial, in: Capsule())
             .padding(.top, 8)
+        }
+    }
+
+    /// Optional "toys to push" bonus indicator.
+    @ViewBuilder
+    private var toysBadge: some View {
+        if viewModel.itemsRemaining > 0 {
+            HStack(spacing: 6) {
+                Image(systemName: "circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(red: 0.86, green: 0.30, blue: 0.42))
+                Text("\(viewModel.itemsRemaining) toy\(viewModel.itemsRemaining == 1 ? "" : "s") to push (+150)")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.white)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.top, 6)
         }
     }
 

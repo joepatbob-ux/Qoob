@@ -225,6 +225,17 @@ sofas, a coffee table, an armchair, an ottoman (`Furniture.swift`).
   (`.usdc`/`.scn` also work) into the project and it's used in place of the
   placeholder, scaled to the piece's footprint.
 
+### Pushable toys (bonus points)
+
+Some floors have **yarn-ball toys** and glowing **pads**. Roll the cat into a
+toy to shove it one cell (Sokoban-style); land it on a pad for **+150** bonus
+points. Toys are optional — they never block winning — and each is generated so
+a single push solves it (item at goal−1, with a clear cell behind to push from).
+Pushing into a wall, furniture, or another toy is blocked. See
+`BoardModel` (item state), `GameController.requestRoll` (push resolution), and
+`SceneKitRenderer.moveItem` (the slide). Future: toys that start on furniture and
+get *knocked off* first — see `ROADMAP.md`.
+
 ## Progression & records
 
 Levels are generated deterministically from their index, so each level is the

@@ -25,6 +25,8 @@ struct Level {
     let targets: [Target]
     let furniture: [Furniture]
     let blocked: Set<GridCell>
+    let items: [GridCell]        // pushable toys' start cells
+    let itemGoals: [GridCell]    // spots to push them onto (bonus points)
 
     /// Every target colour is reachable by rolling (the cube carries all six
     /// colours), and every target *cell* is placed only in the region the cube
@@ -89,13 +91,38 @@ struct Level {
             targets.append(Target(col: cell.col, row: cell.row, colorIndex: color))
         }
 
+        // --- Pushable toys (bonus): each placed so a single push solves it ---
+        // For goal G and push direction d: item sits at I = G-d and the cat can
+        // stand at S = G-2d, so rolling from S in +d shoves the toy onto G.
+        let itemCount = min(index / 3, 3)
+        var items: [GridCell] = []
+        var goals: [GridCell] = []
+        var usedItems = blocked.union(placed).union([start])
+        let dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        var iAttempts = 0
+        while items.count < itemCount && iAttempts < 400 && !pool.isEmpty {
+            iAttempts += 1
+            let g = pool[Int(rng.next() % UInt64(pool.count))]
+            let (dc, dr) = dirs[Int(rng.next() % 4)]
+            let itemCell = GridCell(col: g.col - dc, row: g.row - dr)
+            let stand = GridCell(col: g.col - 2 * dc, row: g.row - 2 * dr)
+            let needed = [g, itemCell, stand]
+            if Set(needed).count != 3 { continue }
+            if !needed.allSatisfy({ reach.contains($0) && !usedItems.contains($0) }) { continue }
+            items.append(itemCell)
+            goals.append(g)
+            needed.forEach { usedItems.insert($0) }
+        }
+
         return Level(index: index,
                      width: size, height: size,
                      startCol: start.col, startRow: start.row,
                      timeLimit: time,
                      targets: targets,
                      furniture: furniture,
-                     blocked: blocked)
+                     blocked: blocked,
+                     items: items,
+                     itemGoals: goals)
     }
 
     /// 4-neighbour flood fill of cells reachable from `start` without entering

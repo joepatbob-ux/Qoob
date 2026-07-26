@@ -80,6 +80,7 @@ final class GameController {
         viewModel.levelIndex = index
         viewModel.score = index == 0 ? 0 : viewModel.score
         viewModel.tilesRemaining = board.remaining
+        viewModel.itemsRemaining = board.itemsRemaining
         viewModel.targetLegend = board.remainingTargetSymbols()
         viewModel.timeRemaining = level.timeLimit
         viewModel.bestTime = progress.bestTime(level: index)
@@ -131,6 +132,27 @@ final class GameController {
             // Blocked by a wall or furniture — nudge the retry window.
             nextRollAllowedAt = now + restBetweenRolls
             return
+        }
+
+        // If a toy sits on the target cell, try to push it one cell further.
+        if board.hasItem(target) {
+            let beyond = GridCell(col: target.col + dCol, row: target.row + dRow)
+            guard board.passable(col: beyond.col, row: beyond.row),
+                  !board.hasItem(beyond) else {
+                // Toy is against a wall / furniture / another toy — can't push.
+                nextRollAllowedAt = now + restBetweenRolls
+                return
+            }
+            let landedOnGoal = board.moveItem(from: target, to: beyond)
+            renderer.moveItem(from: target, to: beyond, duration: rollDuration)
+            if landedOnGoal {
+                viewModel.score += 150
+                viewModel.itemsRemaining = board.itemsRemaining
+                audio.playMatch(streak: 2)
+                Haptics.match()
+            } else {
+                viewModel.itemsRemaining = board.itemsRemaining
+            }
         }
 
         isRolling = true

@@ -34,6 +34,10 @@ final class SceneKitRenderer: NSObject, GameRenderer {
     private var tileNodes: [String: SCNNode] = [:]
     private var ringNodes: [String: SCNNode] = [:]
 
+    /// Pushable toy nodes keyed by their current cell; the goal cells.
+    private var itemNodes: [GridCell: SCNNode] = [:]
+    private var itemGoalCells: Set<GridCell> = []
+
     /// Cube edge length in world units.
     private let cubeSize: CGFloat = 1.0
 
@@ -55,10 +59,13 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         cubeNode.removeFromParentNode()
         tileNodes.removeAll()
         ringNodes.removeAll()
+        itemNodes.removeAll()
+        itemGoalCells = Set(level.itemGoals)
 
         boardNode = SCNNode()
         buildBoard(board)
         buildFurniture(level)
+        buildItems(level)
         scene.rootNode.addChildNode(boardNode)
 
         cubeNode = makeCubeNode(colors: cube.colors)
@@ -126,6 +133,27 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                 SCNAction.removeFromParentNode()
             ]))
             ringNodes[key] = nil
+        }
+    }
+
+    func moveItem(from: GridCell, to: GridCell, duration: TimeInterval) {
+        guard let node = itemNodes[from] else { return }
+        itemNodes[from] = nil
+        itemNodes[to] = node
+
+        let dest = itemPosition(col: to.col, row: to.row)
+        let slide = SCNAction.move(to: dest, duration: duration)
+        slide.timingMode = .easeInEaseOut
+        // A little roll as it slides, for life.
+        let rollAxis = v3(Double(to.row - from.row), 0, Double(from.col - to.col))
+        let spin = SCNAction.rotate(by: .pi, around: rollAxis, duration: duration)
+        node.runAction(SCNAction.group([slide, spin]))
+
+        if itemGoalCells.contains(to) {
+            node.geometry?.firstMaterial?.emission.contents =
+                UIColor(white: 1, alpha: 0.35)
+        } else {
+            node.geometry?.firstMaterial?.emission.contents = UIColor.black
         }
     }
 
@@ -445,6 +473,56 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let holder = SCNNode()
         holder.addChildNode(flat)
         return holder
+    }
+
+    // MARK: - Pushable toys
+
+    private let toyRadius: CGFloat = 0.28
+
+    private func itemPosition(col: Int, row: Int) -> SCNVector3 {
+        v3(Double(col), Double(toyRadius), Double(row))
+    }
+
+    private func buildItems(_ level: Level) {
+        for goal in level.itemGoals {
+            let pad = makeItemGoalPad()
+            pad.position = v3(Double(goal.col), 0.03, Double(goal.row))
+            boardNode.addChildNode(pad)
+        }
+        for cell in level.items {
+            let toy = makeToy()
+            toy.position = itemPosition(col: cell.col, row: cell.row)
+            boardNode.addChildNode(toy)
+            itemNodes[cell] = toy
+        }
+    }
+
+    /// A yarn-ball toy the cat pushes.
+    private func makeToy() -> SCNNode {
+        let ball = SCNSphere(radius: toyRadius)
+        let m = SCNMaterial()
+        m.diffuse.contents = UIColor(red: 0.86, green: 0.30, blue: 0.42, alpha: 1) // yarn red
+        m.roughness.contents = 0.8
+        ball.firstMaterial = m
+        let node = SCNNode(geometry: ball)
+        node.castsShadow = true
+        return node
+    }
+
+    /// A glowing floor pad marking where a toy should be pushed.
+    private func makeItemGoalPad() -> SCNNode {
+        let disc = SCNCylinder(radius: toyRadius * 1.25, height: 0.03)
+        let m = SCNMaterial()
+        m.diffuse.contents = UIColor.white.withAlphaComponent(0.15)
+        m.emission.contents = UIColor(red: 0.95, green: 0.85, blue: 0.45, alpha: 0.55)
+        disc.firstMaterial = m
+        let node = SCNNode(geometry: disc)   // cylinder axis is Y → already flat
+        node.castsShadow = false
+        node.runAction(SCNAction.repeatForever(SCNAction.sequence([
+            SCNAction.fadeOpacity(to: 0.55, duration: 0.9),
+            SCNAction.fadeOpacity(to: 1.0, duration: 0.9)
+        ])))
+        return node
     }
 
     private func buildBoard(_ board: BoardModel) {

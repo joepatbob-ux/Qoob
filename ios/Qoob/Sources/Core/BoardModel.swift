@@ -23,11 +23,15 @@ final class BoardModel {
     private(set) var cells: [[CellModel]]     // cells[row][col]
     private(set) var remaining: Int
     let blocked: Set<GridCell>                // furniture cells (impassable)
+    private(set) var items: Set<GridCell>     // pushable toys' current cells
+    let itemGoals: Set<GridCell>              // spots that score when covered
 
     init(level: Level) {
         width = level.width
         height = level.height
         blocked = level.blocked
+        items = Set(level.items)
+        itemGoals = Set(level.itemGoals)
         cells = Array(
             repeating: Array(repeating: CellModel(), count: level.width),
             count: level.height
@@ -51,6 +55,23 @@ final class BoardModel {
     func passable(col: Int, row: Int) -> Bool {
         contains(col: col, row: row) && !isBlocked(col: col, row: row)
     }
+
+    // MARK: - Pushable toys
+
+    func hasItem(_ cell: GridCell) -> Bool { items.contains(cell) }
+    func isItemGoal(_ cell: GridCell) -> Bool { itemGoals.contains(cell) }
+
+    /// Moves a toy one cell. Returns true if it landed on a goal it wasn't on.
+    @discardableResult
+    func moveItem(from: GridCell, to: GridCell) -> Bool {
+        items.remove(from)
+        items.insert(to)
+        return itemGoals.contains(to) && !itemGoals.contains(from)
+    }
+
+    var totalItems: Int { items.count }
+    var itemsOnGoals: Int { items.intersection(itemGoals).count }
+    var itemsRemaining: Int { max(0, totalItems - itemsOnGoals) }
 
     func cell(col: Int, row: Int) -> CellModel? {
         guard contains(col: col, row: row) else { return nil }
