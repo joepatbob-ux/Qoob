@@ -18,7 +18,7 @@ enum Face: Int, CaseIterable {
 }
 
 /// A cell on the grid.
-struct GridCell: Equatable {
+struct GridCell: Hashable {
     var col: Int
     var row: Int
 }

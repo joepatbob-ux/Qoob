@@ -127,8 +127,8 @@ final class GameController {
 
         let (dCol, dRow) = direction.gridDelta
         let target = GridCell(col: cube.col + dCol, row: cube.row + dRow)
-        guard board.contains(col: target.col, row: target.row) else {
-            // Blocked by a wall — nudge the retry window so we don't spin.
+        guard board.passable(col: target.col, row: target.row) else {
+            // Blocked by a wall or furniture — nudge the retry window.
             nextRollAllowedAt = now + restBetweenRolls
             return
         }

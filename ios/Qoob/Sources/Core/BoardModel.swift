@@ -22,10 +22,12 @@ final class BoardModel {
     let height: Int
     private(set) var cells: [[CellModel]]     // cells[row][col]
     private(set) var remaining: Int
+    let blocked: Set<GridCell>                // furniture cells (impassable)
 
     init(level: Level) {
         width = level.width
         height = level.height
+        blocked = level.blocked
         cells = Array(
             repeating: Array(repeating: CellModel(), count: level.width),
             count: level.height
@@ -38,6 +40,16 @@ final class BoardModel {
 
     func contains(col: Int, row: Int) -> Bool {
         col >= 0 && col < width && row >= 0 && row < height
+    }
+
+    /// A furniture cell the cube cannot roll into.
+    func isBlocked(col: Int, row: Int) -> Bool {
+        blocked.contains(GridCell(col: col, row: row))
+    }
+
+    /// On the board and not blocked by furniture.
+    func passable(col: Int, row: Int) -> Bool {
+        contains(col: col, row: row) && !isBlocked(col: col, row: row)
     }
 
     func cell(col: Int, row: Int) -> CellModel? {

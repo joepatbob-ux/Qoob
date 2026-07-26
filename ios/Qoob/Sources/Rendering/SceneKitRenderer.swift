@@ -58,6 +58,7 @@ final class SceneKitRenderer: NSObject, GameRenderer {
 
         boardNode = SCNNode()
         buildBoard(board)
+        buildFurniture(level)
         scene.rootNode.addChildNode(boardNode)
 
         cubeNode = makeCubeNode(colors: cube.colors)
@@ -162,13 +163,21 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         scene.rootNode.addChildNode(cameraNode)
     }
 
-    /// Places the camera above and toward the player so that -row reads as "up
-    /// the screen" and +col reads as "right".
+    /// Near top-down camera looking down at the living-room floor.
+    /// `topDownTilt` is how far off straight-down the view leans (0 = perfectly
+    /// overhead; a small tilt gives furniture some dimension and avoids the
+    /// look-at gimbal at exact vertical). -row reads as "up the screen",
+    /// +col as "right".
+    private let topDownTilt = 0.22   // radians (~12.5°); raise for more angle
+
     private func aimCamera(board: BoardModel) {
         let cx = Double(board.width - 1) / 2.0
         let cz = Double(board.height - 1) / 2.0
         let span = Double(max(board.width, board.height))
-        cameraNode.position = v3(cx, span * 1.15, cz + span * 1.15)
+        let height = span * 2.0
+        let zOffset = height * tan(topDownTilt)   // small lean toward the player
+        cameraNode.camera?.fieldOfView = 52
+        cameraNode.position = v3(cx, height, cz + zOffset)
         cameraNode.look(at: v3(cx, 0, cz))
     }
 
@@ -357,6 +366,86 @@ final class SceneKitRenderer: NSObject, GameRenderer {
     }
 
     private let tileThickness: CGFloat = 0.12
+
+    /// Draws each furniture obstacle: a bundled model if provided (e.g.
+    /// sofa.usdz), else a simple stylised placeholder box sized to its
+    /// footprint.
+    private func buildFurniture(_ level: Level) {
+        for piece in level.furniture {
+            let node = furnitureModel(piece) ?? placeholderFurniture(piece)
+            node.position = v3(piece.centerCol, 0, piece.centerRow)
+            boardNode.addChildNode(node)
+        }
+    }
+
+    private func placeholderFurniture(_ piece: Furniture) -> SCNNode {
+        let margin: CGFloat = 0.12
+        let w = CGFloat(piece.cols) * cubeSize - margin
+        let d = CGFloat(piece.rows) * cubeSize - margin
+        let h = piece.kind.height
+
+        let box = SCNBox(width: w, height: h, length: d, chamferRadius: 0.08)
+        let mat = SCNMaterial()
+        mat.diffuse.contents = piece.kind.color
+        mat.roughness.contents = 0.9
+        box.firstMaterial = mat
+
+        let node = SCNNode(geometry: box)
+        node.position = v3(0, Double(h) / 2.0, 0)     // sit on the floor
+        node.castsShadow = true
+
+        let holder = SCNNode()
+        holder.addChildNode(node)
+
+        // A soft back cushion on sofas/armchairs, along the piece's long edge.
+        if piece.kind == .sofa || piece.kind == .armchair {
+            let backThick: CGFloat = 0.2
+            let along = piece.cols >= piece.rows          // long axis is X?
+            let back = SCNBox(width: along ? w : backThick,
+                              height: h * 0.9,
+                              length: along ? backThick : d,
+                              chamferRadius: 0.06)
+            let bm = SCNMaterial()
+            bm.diffuse.contents = piece.kind.color.withAlphaComponent(0.85)
+            bm.roughness.contents = 0.9
+            back.firstMaterial = bm
+            let backNode = SCNNode(geometry: back)
+            let edge = Double((along ? d : w) / 2.0) - Double(backThick) / 2.0
+            backNode.position = along ? v3(0, Double(h) * 0.65, -edge)
+                                      : v3(-edge, Double(h) * 0.65, 0)
+            backNode.castsShadow = true
+            holder.addChildNode(backNode)
+        }
+        return holder
+    }
+
+    /// Loads `<kind>.usdz/.usdc/.scn` if bundled, scaled to the footprint.
+    private func furnitureModel(_ piece: Furniture) -> SCNNode? {
+        let base = piece.kind.modelBaseName
+        var scene: SCNScene?
+        for ext in ["usdz", "usdc", "scn"] {
+            if let url = Bundle.main.url(forResource: base, withExtension: ext) {
+                scene = try? SCNScene(url: url, options: nil)
+                if scene != nil { break }
+            }
+        }
+        guard let loaded = scene else { return nil }
+        let flat = loaded.rootNode.flattenedClone()
+        let (minB, maxB) = flat.boundingBox
+        let dx = maxB.x - minB.x, dz = maxB.z - minB.z
+        let targetW = Float(CGFloat(piece.cols) * cubeSize - 0.12)
+        let targetD = Float(CGFloat(piece.rows) * cubeSize - 0.12)
+        guard dx > 0, dz > 0 else { return nil }
+        let s = min(targetW / dx, targetD / dz)
+        flat.scale = SCNVector3(s, s, s)
+        // Rest on the floor, centred on X/Z.
+        flat.position = SCNVector3(-(minB.x + maxB.x) / 2 * s,
+                                   -minB.y * s,
+                                   -(minB.z + maxB.z) / 2 * s)
+        let holder = SCNNode()
+        holder.addChildNode(flat)
+        return holder
+    }
 
     private func buildBoard(_ board: BoardModel) {
         addGround(board)

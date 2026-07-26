@@ -23,42 +23,99 @@ struct Level {
     let startRow: Int
     let timeLimit: TimeInterval
     let targets: [Target]
+    let furniture: [Furniture]
+    let blocked: Set<GridCell>
 
-    /// Every target colour is always reachable: the cube carries all six
-    /// colours and any face can be rolled to the bottom, so a randomly
-    /// coloured target set is always solvable.
+    /// Every target colour is reachable by rolling (the cube carries all six
+    /// colours), and every target *cell* is placed only in the region the cube
+    /// can actually reach around the furniture — so levels are always solvable.
     static func generate(index: Int, seed: UInt64? = nil) -> Level {
         var rng = SeededGenerator(seed: seed ?? UInt64(0xE7D0 &+ UInt64(index) &* 2654435761))
 
         // Grid grows gently with progression, capped for phone screens.
         let size = min(5 + index / 2, 8)
-        let start = size / 2
+        let start = GridCell(col: size / 2, row: size / 2)
 
-        // More targets as levels advance.
-        let targetCount = min(3 + index, size * size - 1)
-        let time = TimeInterval(45 + targetCount * 6)
+        // --- Place furniture (impassable) ---
+        let pieceCount = min(1 + index / 2, max(1, (size * size) / 8))
+        var furniture: [Furniture] = []
+        var blocked = Set<GridCell>()
 
-        var used = Set<Int>()
-        used.insert(start * size + start) // keep the start cell clear
-        var targets: [Target] = []
+        func fits(_ f: Furniture) -> Bool {
+            for cell in f.cells {
+                if cell.col < 0 || cell.col >= size || cell.row < 0 || cell.row >= size { return false }
+                if cell == start { return false }
+                if blocked.contains(cell) { return false }
+            }
+            return true
+        }
 
         var attempts = 0
-        while targets.count < targetCount && attempts < 500 {
+        while furniture.count < pieceCount && attempts < 300 {
             attempts += 1
-            let col = Int(rng.next() % UInt64(size))
-            let row = Int(rng.next() % UInt64(size))
-            let key = row * size + col
-            if used.contains(key) { continue }
-            used.insert(key)
+            let kind = FurnitureKind.allCases[Int(rng.next() % UInt64(FurnitureKind.allCases.count))]
+            let fp = kind.footprints[Int(rng.next() % UInt64(kind.footprints.count))]
+            let origin = GridCell(col: Int(rng.next() % UInt64(size)),
+                                  row: Int(rng.next() % UInt64(size)))
+            let piece = Furniture(kind: kind, origin: origin, cols: fp.cols, rows: fp.rows)
+            guard fits(piece) else { continue }
+            // Keep the reachable area connected & roomy.
+            var candidate = blocked
+            for c in piece.cells { candidate.insert(c) }
+            let reach = reachable(from: start, size: size, blocked: candidate).count
+            if reach < (size * size) - (size * size) / 3 { continue }  // don't wall off too much
+            furniture.append(piece)
+            blocked = candidate
+        }
+
+        let reach = reachable(from: start, size: size, blocked: blocked)
+
+        // --- Targets, only on reachable free cells ---
+        let freeReachable = reach.subtracting([start])
+        let maxTargets = max(1, freeReachable.count)
+        let targetCount = min(3 + index, maxTargets)
+        let time = TimeInterval(45 + targetCount * 6)
+
+        var placed = Set<GridCell>()
+        var targets: [Target] = []
+        var tAttempts = 0
+        let pool = Array(freeReachable)
+        while targets.count < targetCount && tAttempts < 800 && !pool.isEmpty {
+            tAttempts += 1
+            let cell = pool[Int(rng.next() % UInt64(pool.count))]
+            if placed.contains(cell) { continue }
+            placed.insert(cell)
             let color = Int(rng.next() % UInt64(GamePalette.count))
-            targets.append(Target(col: col, row: row, colorIndex: color))
+            targets.append(Target(col: cell.col, row: cell.row, colorIndex: color))
         }
 
         return Level(index: index,
                      width: size, height: size,
-                     startCol: start, startRow: start,
+                     startCol: start.col, startRow: start.row,
                      timeLimit: time,
-                     targets: targets)
+                     targets: targets,
+                     furniture: furniture,
+                     blocked: blocked)
+    }
+
+    /// 4-neighbour flood fill of cells reachable from `start` without entering
+    /// a blocked (furniture) cell.
+    private static func reachable(from start: GridCell, size: Int,
+                                  blocked: Set<GridCell>) -> Set<GridCell> {
+        var seen = Set<GridCell>()
+        var stack = [start]
+        seen.insert(start)
+        let deltas = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        while let cur = stack.popLast() {
+            for (dc, dr) in deltas {
+                let n = GridCell(col: cur.col + dc, row: cur.row + dr)
+                if n.col < 0 || n.col >= size || n.row < 0 || n.row >= size { continue }
+                if blocked.contains(n) || seen.contains(n) { continue }
+                seen.insert(n)
+                stack.append(n)
+            }
+        }
+        return seen
     }
 
     /// The cube-cat's face layout at level start:

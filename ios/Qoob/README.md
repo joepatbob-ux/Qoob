@@ -149,7 +149,8 @@ Sources/
   Core/                    ← no rendering-engine imports
     CoreTypes.swift        Face, RollDirection, GridCell, CubeState (roll math)
     BoardModel.swift       grid + symbol-match logic
-    Level.swift            procedural level generation + cat face layout
+    Level.swift            procedural level gen + furniture + reachability
+    Furniture.swift        living-room obstacle model (kinds, footprints)
     CatSymbols.swift       the six cube-cat depictions + generated textures
     GamePalette.swift      accent colours + mantras
     ProgressStore.swift    best times/scores per level (UserDefaults)
@@ -204,6 +205,25 @@ Notes:
 The **app icon** is a generated placeholder (`AppIcon.appiconset/icon_1024.png`)
 — replace it with your own 1024×1024 PNG when ready. The cat casts a soft
 shadow onto the floor (tune `shadowRadius` / `shadowColor` in `setupLighting`).
+
+## The living room (top-down + obstacles)
+
+The camera is near **top-down**, looking down at the floor with a slight lean so
+furniture keeps some dimension (tune `topDownTilt` in `SceneKitRenderer`). The
+floor is scattered with **furniture obstacles** the cat must roll around —
+sofas, a coffee table, an armchair, an ottoman (`Furniture.swift`).
+
+- Furniture cells are **impassable**: `Level.generate` places pieces, records
+  their cells in `blocked`, and `GameController` refuses rolls into them
+  (`BoardModel.passable`).
+- **Always solvable**: generation flood-fills the region the cube can actually
+  reach around the furniture and places targets *only* there, and it rejects any
+  furniture layout that would wall off more than a third of the floor.
+- Furniture renders as stylised placeholder boxes (sofa/armchair get a back
+  cushion). Drop `sofa.usdz` / `coffee_table`… no — the model name is the kind's
+  raw value: **`sofa.usdz`, `coffeeTable.usdz`, `armchair.usdz`, `rugChest.usdz`**
+  (`.usdc`/`.scn` also work) into the project and it's used in place of the
+  placeholder, scaled to the piece's footprint.
 
 ## Progression & records
 
