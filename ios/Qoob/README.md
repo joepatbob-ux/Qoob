@@ -200,6 +200,10 @@ Notes:
 - Tiling density is set in `bodyMaterial` / `addGround` (`SCNMatrix4MakeScale`),
   easy one-line tweaks.
 
+The **app icon** is a generated placeholder (`AppIcon.appiconset/icon_1024.png`)
+— replace it with your own 1024×1024 PNG when ready. The cat casts a soft
+shadow onto the floor (tune `shadowRadius` / `shadowColor` in `setupLighting`).
+
 ## The roll math (why the bottom face is always correct)
 
 The cube tracks its six face colours logically and animates visually from the

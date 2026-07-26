@@ -143,8 +143,13 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         key.light!.type = .directional
         key.light!.intensity = 780
         key.light!.castsShadow = true
-        key.light!.shadowMode = .deferred
-        key.light!.shadowColor = UIColor(white: 0, alpha: 0.35)
+        // Forward mode so the cat casts a real, soft shadow onto the carpet/
+        // floor (deferred is a screen-space overlay and reads flatter).
+        key.light!.shadowMode = .forward
+        key.light!.shadowColor = UIColor(white: 0, alpha: 0.34)
+        key.light!.shadowRadius = 8            // soft penumbra
+        key.light!.shadowSampleCount = 16      // smooth edges
+        key.light!.shadowMapSize = CGSize(width: 2048, height: 2048)
         key.eulerAngles = v3(-Double.pi / 3, Double.pi / 6, 0)
         scene.rootNode.addChildNode(key)
     }

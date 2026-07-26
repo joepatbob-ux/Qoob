@@ -29,6 +29,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.qoob
         PRODUCT_NAME: Qoob
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_FILE: Sources/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1,2"
