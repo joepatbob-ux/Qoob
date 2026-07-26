@@ -1,0 +1,40 @@
+#
+#  project.yml — XcodeGen spec for TiltCube
+#
+#  Generate the Xcode project with:
+#      brew install xcodegen        # once
+#      cd ios/TiltCube
+#      xcodegen generate
+#      open TiltCube.xcodeproj
+#
+#  (See README.md for a no-tools alternative that just drags the Sources
+#   folder into a fresh Xcode "App" project.)
+#
+name: TiltCube
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+targets:
+  TiltCube:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+        excludes:
+          - "Resources/Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.tiltcube
+        PRODUCT_NAME: TiltCube
+        INFOPLIST_FILE: Sources/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES
