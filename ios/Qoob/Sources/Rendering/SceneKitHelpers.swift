@@ -1,6 +1,6 @@
 //
 //  SceneKitHelpers.swift
-//  TiltCube
+//  Qoob
 //
 //  `SCNVector3`'s components are `Float` on iOS, and mixing `Float`/`CGFloat`
 //  or bare float literals in its initializer is a common source of ambiguous-

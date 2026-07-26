@@ -1,6 +1,6 @@
 //
 //  CoreTypes.swift
-//  TiltCube
+//  Qoob
 //
 //  Pure game-core types. NOTHING here imports a rendering engine (SceneKit,
 //  RealityKit, Metal) — the core describes *what* the game is doing and a

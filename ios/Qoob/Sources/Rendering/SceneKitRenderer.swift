@@ -1,6 +1,6 @@
 //
 //  SceneKitRenderer.swift
-//  TiltCube
+//  Qoob
 //
 //  The SceneKit implementation of GameRenderer. All SceneKit knowledge lives
 //  here: scene graph, camera, lighting, tile + cube geometry, the pivot-edge

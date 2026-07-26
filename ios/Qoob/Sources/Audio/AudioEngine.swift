@@ -1,6 +1,6 @@
 //
 //  AudioEngine.swift
-//  TiltCube
+//  Qoob
 //
 //  A tiny procedural sound engine. Everything is synthesised into PCM buffers
 //  at runtime, so the game ships with no audio asset files — a nod to

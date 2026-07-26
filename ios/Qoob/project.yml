@@ -1,16 +1,16 @@
 #
-#  project.yml — XcodeGen spec for TiltCube
+#  project.yml — XcodeGen spec for Qoob
 #
 #  Generate the Xcode project with:
 #      brew install xcodegen        # once
-#      cd ios/TiltCube
+#      cd ios/Qoob
 #      xcodegen generate
-#      open TiltCube.xcodeproj
+#      open Qoob.xcodeproj
 #
 #  (See README.md for a no-tools alternative that just drags the Sources
 #   folder into a fresh Xcode "App" project.)
 #
-name: TiltCube
+name: Qoob
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
@@ -18,7 +18,7 @@ options:
   createIntermediateGroups: true
 
 targets:
-  TiltCube:
+  Qoob:
     type: application
     platform: iOS
     sources:
@@ -27,8 +27,8 @@ targets:
           - "Resources/Info.plist"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.tiltcube
-        PRODUCT_NAME: TiltCube
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.qoob
+        PRODUCT_NAME: Qoob
         INFOPLIST_FILE: Sources/Resources/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1,2"

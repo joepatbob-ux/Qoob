@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  TiltCube
+//  Qoob
 //
 //  The SwiftUI HUD layered over the SceneKit game: score, timer, tiles left,
 //  the fading mantra, control toggles, an on-screen D-pad, and the

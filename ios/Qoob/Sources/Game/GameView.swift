@@ -1,6 +1,6 @@
 //
 //  GameView.swift
-//  TiltCube
+//  Qoob
 //
 //  The SwiftUI ⇄ rendering boundary. It picks a concrete GameRenderer
 //  (SceneKitRenderer today), embeds that renderer's view, injects the renderer

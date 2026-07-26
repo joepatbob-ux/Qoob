@@ -1,6 +1,6 @@
 //
-//  TiltCubeApp.swift
-//  TiltCube
+//  QoobApp.swift
+//  Qoob
 //
 //  App entry point (SwiftUI lifecycle).
 //
@@ -8,7 +8,7 @@
 import SwiftUI
 
 @main
-struct TiltCubeApp: App {
+struct QoobApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()

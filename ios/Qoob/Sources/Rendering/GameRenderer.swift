@@ -1,6 +1,6 @@
 //
 //  GameRenderer.swift
-//  TiltCube
+//  Qoob
 //
 //  The seam between the engine-agnostic game core and whatever draws it. The
 //  core calls these methods; an implementation (SceneKitRenderer today, a

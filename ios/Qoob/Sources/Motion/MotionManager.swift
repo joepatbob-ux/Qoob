@@ -1,6 +1,6 @@
 //
 //  MotionManager.swift
-//  TiltCube
+//  Qoob
 //
 //  Wraps CoreMotion. Reads the device's gravity vector and turns tilt into a
 //  discrete roll direction. A neutral baseline is captured on calibration so

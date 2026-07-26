@@ -1,6 +1,6 @@
 //
 //  Haptics.swift
-//  TiltCube
+//  Qoob
 //
 //  Light tactile feedback for rolls and matches. No-ops on devices without a
 //  Taptic Engine (and on the Simulator).

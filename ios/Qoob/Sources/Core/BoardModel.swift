@@ -1,6 +1,6 @@
 //
 //  BoardModel.swift
-//  TiltCube
+//  Qoob
 //
 //  Pure grid model + match logic. No rendering — the renderer builds tile
 //  visuals from this and is told (via GameRenderer.clearTile) when a target is

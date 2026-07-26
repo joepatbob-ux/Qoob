@@ -1,6 +1,6 @@
 //
 //  GamePalette.swift
-//  TiltCube
+//  Qoob
 //
 //  Scene colours plus the gentle, Endorfun-inspired affirmations that surface
 //  as the player matches tiles. The six face/tile accent colours come from the

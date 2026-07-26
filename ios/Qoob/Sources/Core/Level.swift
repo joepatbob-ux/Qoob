@@ -1,6 +1,6 @@
 //
 //  Level.swift
-//  TiltCube
+//  Qoob
 //
 //  A level is a grid size, a cube start cell, a time limit, and a set of
 //  target tiles. Levels are generated procedurally so the game is endlessly

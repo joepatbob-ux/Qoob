@@ -1,6 +1,6 @@
 //
 //  GameViewModel.swift
-//  TiltCube
+//  Qoob
 //
 //  Observable bridge between the SceneKit game and the SwiftUI HUD.
 //

@@ -1,6 +1,6 @@
 //
 //  CatSymbols.swift
-//  TiltCube
+//  Qoob
 //
 //  The six faces of the cube-cat, drawn procedurally so the game needs no
 //  image assets yet. Each face's palette index (0–5, used throughout the game

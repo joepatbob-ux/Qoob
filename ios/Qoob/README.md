@@ -1,4 +1,4 @@
-# TiltCube — a cube-cat tilt-and-roll puzzle for iOS
+# Qoob — a cube-cat tilt-and-roll puzzle for iOS
 
 A calm, meditative rolling-puzzle game starring a **cube-cat**: a die whose six
 faces each depict a part of the cat. You roll it around a grid — by **tilting
@@ -47,17 +47,17 @@ still see the board).
 
 ```bash
 brew install xcodegen        # once
-cd ios/TiltCube
+cd ios/Qoob
 xcodegen generate
-open TiltCube.xcodeproj
+open Qoob.xcodeproj
 ```
 
-Select your device, set your signing team on the `TiltCube` target
+Select your device, set your signing team on the `Qoob` target
 (Signing & Capabilities), and Run.
 
 ### Option B — no extra tools
 
-1. In Xcode: **File ▸ New ▸ Project… ▸ iOS ▸ App**. Name it `TiltCube`,
+1. In Xcode: **File ▸ New ▸ Project… ▸ iOS ▸ App**. Name it `Qoob`,
    Interface **SwiftUI**, Language **Swift**.
 2. Delete the template's `ContentView.swift` and `*App.swift`.
 3. Drag the `Sources/App`, `Sources/Game`, `Sources/Motion`, and
@@ -144,7 +144,7 @@ GameRenderer  ──►  present(level:board:cube:)          build visuals
 ```
 Sources/
   App/
-    TiltCubeApp.swift      @main entry point
+    QoobApp.swift      @main entry point
     ContentView.swift      SwiftUI HUD + menus + D-pad
   Core/                    ← no rendering-engine imports
     CoreTypes.swift        Face, RollDirection, GridCell, CubeState (roll math)
@@ -219,6 +219,6 @@ findings shaped this project:
    weapons, projectiles — none of which is in Endorfun. They were **not** used
    here.
 
-So TiltCube is a clean-room, original reimagining of the *idea* (tilt-to-roll a
+So Qoob is a clean-room, original reimagining of the *idea* (tilt-to-roll a
 colour cube on a grid, meditative tone) rather than a port. All colours, words,
 audio, and code are new.

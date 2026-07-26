@@ -1,6 +1,6 @@
 //
 //  GameController.swift
-//  TiltCube
+//  Qoob
 //
 //  The engine-agnostic game orchestrator. It owns game state (BoardModel,
 //  CubeState), the frame loop, the timer, scoring, input, audio and haptics,
