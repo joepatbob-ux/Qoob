@@ -2,9 +2,9 @@
 //  ContentView.swift
 //  Qoob
 //
-//  The SwiftUI HUD layered over the SceneKit game: score, timer, tiles left,
-//  the fading mantra, control toggles, an on-screen D-pad, and the
-//  start / win / lose overlays.
+//  The SwiftUI HUD layered over the SceneKit game: score, elapsed clock, tiles
+//  left, the fading mantra, control toggles, an on-screen D-pad, and the
+//  start / win overlays. There is no time limit — the game is meditative.
 //
 //  Control schemes (any combination):
 //    • Tilt   — gyroscope (real device only)
@@ -54,8 +54,7 @@ struct ContentView: View {
             Spacer()
             pill(label: "LEFT", value: "\(viewModel.tilesRemaining)")
             Spacer()
-            pill(label: "TIME", value: timeString(viewModel.timeRemaining))
-                .foregroundColor(viewModel.timeRemaining < 10 ? .red : .white)
+            pill(label: "TIME", value: timeString(viewModel.elapsed))
         }
     }
 
@@ -202,10 +201,6 @@ struct ContentView: View {
             panel(title: "Level \(viewModel.levelIndex + 1) complete",
                   subtitle: wonSubtitle,
                   button: "Next level")
-        case .lost:
-            panel(title: "Time's up",
-                  subtitle: "Score \(viewModel.score)\nNo rush — try again.",
-                  button: "Retry")
         case .playing:
             EmptyView()
         }
@@ -279,7 +274,7 @@ struct ContentView: View {
     // MARK: - Helpers
 
     private func timeString(_ t: TimeInterval) -> String {
-        let s = Int(t.rounded(.up))
+        let s = Int(t)
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 

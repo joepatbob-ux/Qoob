@@ -11,7 +11,6 @@ enum GamePhase {
     case ready       // waiting to start / calibrate
     case playing
     case won
-    case lost
 }
 
 @MainActor
@@ -20,7 +19,7 @@ final class GameViewModel: ObservableObject {
     @Published var score: Int = 0
     @Published var levelIndex: Int = 0
     @Published var environmentName: String = Environment.forLevel(0).displayName
-    @Published var timeRemaining: TimeInterval = 0
+    @Published var elapsed: TimeInterval = 0   // gentle count-up since level start
     @Published var tilesRemaining: Int = 0
     @Published var itemsRemaining: Int = 0    // toys not yet on a goal
     @Published var targetLegend: [Int] = []   // distinct symbol indices still needed

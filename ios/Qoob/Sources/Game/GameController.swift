@@ -3,7 +3,7 @@
 //  Qoob
 //
 //  The engine-agnostic game orchestrator. It owns game state (BoardModel,
-//  CubeState), the frame loop, the timer, scoring, input, audio and haptics,
+//  CubeState), the frame loop, the elapsed clock, scoring, input, audio and haptics,
 //  and drives a `GameRenderer` for all visuals. It imports no rendering engine
 //  — swap SceneKitRenderer for another GameRenderer and this file is unchanged.
 //
@@ -29,7 +29,7 @@ final class GameController {
 
     // Timing
     private var displayLink: CADisplayLink?
-    private var levelDeadline: CFTimeInterval = 0
+    private var levelStartTime: CFTimeInterval = 0
 
     // Roll pacing: a brief rest between rolls so a held tilt "rolls downhill"
     // at a pleasant cadence rather than instantly.
@@ -83,12 +83,12 @@ final class GameController {
         viewModel.tilesRemaining = board.remaining
         viewModel.itemsRemaining = board.itemsRemaining
         viewModel.targetLegend = board.remainingTargetSymbols()
-        viewModel.timeRemaining = level.timeLimit
+        viewModel.elapsed = 0
         viewModel.bestTime = progress.bestTime(level: index)
         viewModel.bestScore = progress.bestScore(level: index)
         viewModel.lastTime = nil
         viewModel.isNewBest = false
-        levelDeadline = CACurrentMediaTime() + level.timeLimit
+        levelStartTime = CACurrentMediaTime()
         viewModel.phase = .playing
         Haptics.prepare()
 
@@ -108,12 +108,9 @@ final class GameController {
         guard viewModel.phase == .playing else { return }
 
         let now = CACurrentMediaTime()
-        let remaining = max(0, levelDeadline - now)
-        viewModel.timeRemaining = remaining
-        if remaining <= 0 {
-            endGame(won: false)
-            return
-        }
+        // No time limit — this is a meditative game. The clock counts up only so
+        // per-level "best time" records stay meaningful; it never ends the level.
+        viewModel.elapsed = max(0, now - levelStartTime)
 
         if viewModel.tiltEnabled, let direction = motion.rollDirection() {
             requestRoll(direction)
@@ -173,7 +170,7 @@ final class GameController {
             self.resolveMatch()
             self.isRolling = false
             if self.board.isComplete {
-                self.endGame(won: true)
+                self.endGame()
             }
         }
     }
@@ -198,19 +195,17 @@ final class GameController {
         }
     }
 
-    private func endGame(won: Bool) {
-        if won {
-            viewModel.score += Int(max(0, viewModel.timeRemaining)) * 10  // time bonus
-            let timeTaken = currentLevel.timeLimit - viewModel.timeRemaining
-            viewModel.lastTime = timeTaken
-            viewModel.isNewBest = progress.recordWin(level: viewModel.levelIndex,
-                                                     time: timeTaken,
-                                                     score: viewModel.score)
-            viewModel.bestTime = progress.bestTime(level: viewModel.levelIndex)
-            viewModel.bestScore = progress.bestScore(level: viewModel.levelIndex)
-            audio.playWin()
-        }
-        viewModel.phase = won ? .won : .lost
+    /// The level is complete — the only way a level ends. No losing, no rush.
+    private func endGame() {
+        let timeTaken = viewModel.elapsed
+        viewModel.lastTime = timeTaken
+        viewModel.isNewBest = progress.recordWin(level: viewModel.levelIndex,
+                                                 time: timeTaken,
+                                                 score: viewModel.score)
+        viewModel.bestTime = progress.bestTime(level: viewModel.levelIndex)
+        viewModel.bestScore = progress.bestScore(level: viewModel.levelIndex)
+        audio.playWin()
+        viewModel.phase = .won
     }
 
     // MARK: - Control

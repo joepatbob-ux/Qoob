@@ -3,9 +3,10 @@
 A calm, meditative rolling-puzzle game starring a **cube-cat**: a die whose six
 faces each depict a part of the cat. You roll it around a grid — by **tilting
 your iPhone/iPad** (gyroscope), swiping, or the on-screen D-pad — to land the
-**pictured side face-down** on each glowing target tile. Clear every target
-before the timer runs out. Gentle affirmations and a procedural ambient
-soundtrack accompany each match.
+**pictured side face-down** on each glowing target tile. Clear every target at
+your own pace — **there is no time limit**; a gentle clock only counts up so
+per-level best times stay meaningful. Gentle affirmations and a procedural
+ambient soundtrack accompany each match.
 
 **The cube-cat's six faces** (see `Core/CatSymbols.swift`, drawn procedurally so
 no image assets are needed yet):
@@ -88,7 +89,7 @@ buttons/swipes.
 
 Roll the cat so the depiction on its **bottom** face matches the picture on a
 glowing target tile — that clears it. The **FIND** legend at the top shows the
-depictions still needed this level. Clear every target before time runs out.
+depictions still needed this level. Clear every target — take as long as you like.
 Consecutive matches build a streak (higher score + a rising bell). Every roll
 and match gives light haptic feedback, and the cat gently "breathes" while you
 think.
@@ -260,7 +261,7 @@ same board every time — which makes per-level records meaningful. `ProgressSto
 persists (in `UserDefaults`) the **best completion time** and **best score** per
 level and the highest level reached. The win screen shows your time, flags a
 "★ New best time!", and otherwise shows the best to beat. "Next level" advances
-the index; the difficulty (grid size, target count, time limit) scales with it
+the index; the difficulty (grid size, target count) scales with it
 in `Level.generate`.
 
 ## Dropping in a 3D cat model

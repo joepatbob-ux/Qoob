@@ -28,7 +28,6 @@ struct Level {
     let height: Int
     let startCol: Int
     let startRow: Int
-    let timeLimit: TimeInterval
     let targets: [Target]
     let furniture: [Furniture]
     let blocked: Set<GridCell>
@@ -86,7 +85,6 @@ struct Level {
         let freeReachable = reach.subtracting([start])
         let maxTargets = max(1, freeReachable.count)
         let targetCount = min(3 + index, maxTargets)
-        let time = TimeInterval(45 + targetCount * 6)
 
         var placed = Set<GridCell>()
         var targets: [Target] = []
@@ -145,7 +143,6 @@ struct Level {
         return Level(index: index,
                      width: size, height: size,
                      startCol: start.col, startRow: start.row,
-                     timeLimit: time,
                      targets: targets,
                      furniture: furniture,
                      blocked: blocked,
