@@ -176,23 +176,87 @@ final class SceneKitRenderer: NSObject, GameRenderer {
     /// SCNBox exposes materials in the order front(+Z), right(+X), back(-Z),
     /// left(-X), top(+Y), bottom(-Y). Assigning palette colours in that order
     /// matches the logical CubeState face colours.
+    ///
+    /// Structure:
+    ///   cube (container — this is what rolls / gets positioned & baked)
+    ///     art (breathing wobble applied here, so it never disturbs the roll
+    ///          transform the game logic reads from the container)
+    ///       body  — chamfered SCNBox tinted per face with the accent colours
+    ///       decal×6 — an explicitly-oriented plane per face carrying the glyph
+    ///
+    /// Using oriented decal planes (rather than textures on the SCNBox faces)
+    /// gives precise control of each glyph's "up" direction, sidestepping
+    /// SCNBox's per-face UV quirks.
     private func makeCubeNode(colors: [Face: Int]) -> SCNNode {
+        let container = SCNNode()
+        container.name = "cube"
+
+        let art = SCNNode()
+        art.name = "cubeArt"
+        container.addChildNode(art)
+
+        // Body: accent colour per face.
         let box = SCNBox(width: cubeSize, height: cubeSize, length: cubeSize,
                          chamferRadius: cubeSize * 0.06)
         let order: [Face] = [.front, .right, .back, .left, .up, .down]
         box.materials = order.map { face in
-            let index = colors[face] ?? 0
+            let color = GamePalette.color(colors[face] ?? 0)
             let m = SCNMaterial()
-            m.diffuse.contents = SymbolTextures.face(index)      // the cat depiction
-            m.emission.contents = GamePalette.color(index).withAlphaComponent(0.10)
-            m.roughness.contents = 0.55
+            m.diffuse.contents = color
+            m.emission.contents = color.withAlphaComponent(0.10)
+            m.roughness.contents = 0.5
             m.metalness.contents = 0.0
             return m
         }
-        let node = SCNNode(geometry: box)
-        node.name = "cube"
-        node.castsShadow = true
-        return node
+        let bodyNode = SCNNode(geometry: box)
+        bodyNode.castsShadow = true
+        art.addChildNode(bodyNode)
+
+        // Glyph decals, one oriented plane per face.
+        let half = Double(cubeSize) / 2.0 + 0.004   // proud of the face, avoids z-fighting
+        for face in Face.allCases {
+            let plane = SCNPlane(width: cubeSize * 0.86, height: cubeSize * 0.86)
+            let m = SCNMaterial()
+            m.diffuse.contents = SymbolTextures.decal(colors[face] ?? 0)
+            m.isDoubleSided = false
+            plane.firstMaterial = m
+            let decal = SCNNode(geometry: plane)
+            decal.castsShadow = false
+            let (pos, euler) = decalPlacement(face, offset: half)
+            decal.position = pos
+            decal.eulerAngles = euler
+            art.addChildNode(decal)
+        }
+
+        // Idle "breathing" wobble — a slow, gentle scale pulse.
+        let breathe = SCNAction.sequence([
+            easedScale(to: 1.03, duration: 1.6),
+            easedScale(to: 1.0, duration: 1.6)
+        ])
+        art.runAction(SCNAction.repeatForever(breathe))
+
+        return container
+    }
+
+    private func easedScale(to scale: CGFloat, duration: TimeInterval) -> SCNAction {
+        let a = SCNAction.scale(to: scale, duration: duration)
+        a.timingMode = .easeInEaseOut
+        return a
+    }
+
+    /// Position + Euler angles that place a decal plane (default normal +Z,
+    /// up +Y) flat on the given cube face, with its "up" chosen so the glyph
+    /// reads naturally (e.g. the top face's up points away from the camera).
+    private func decalPlacement(_ face: Face, offset h: Double) -> (SCNVector3, SCNVector3) {
+        let q = Double.pi / 2
+        switch face {
+        case .front: return (v3(0, 0,  h), v3(0, 0, 0))
+        case .back:  return (v3(0, 0, -h), v3(0, .pi, 0))
+        case .right: return (v3( h, 0, 0), v3(0,  q, 0))
+        case .left:  return (v3(-h, 0, 0), v3(0, -q, 0))
+        case .up:    return (v3(0,  h, 0), v3(-q, 0, 0))
+        case .down:  return (v3(0, -h, 0), v3( q, 0, 0))
+        }
     }
 
     private func buildBoard(_ board: BoardModel) {

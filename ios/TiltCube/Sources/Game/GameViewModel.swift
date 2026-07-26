@@ -21,6 +21,7 @@ final class GameViewModel: ObservableObject {
     @Published var levelIndex: Int = 0
     @Published var timeRemaining: TimeInterval = 0
     @Published var tilesRemaining: Int = 0
+    @Published var targetLegend: [Int] = []   // distinct symbol indices still needed
     @Published var mantra: String = ""
     @Published var showMantra: Bool = false
     @Published var motionUnavailable: Bool = false

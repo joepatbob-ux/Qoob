@@ -47,6 +47,23 @@ final class BoardModel {
 
     var isComplete: Bool { remaining == 0 }
 
+    /// Distinct symbol indices still needed (uncleared targets), sorted — for
+    /// the HUD "still to find" legend.
+    func remainingTargetSymbols() -> [Int] {
+        var seen = Set<Int>()
+        var out: [Int] = []
+        for row in 0..<height {
+            for col in 0..<width {
+                let c = cells[row][col]
+                if let t = c.target, !c.cleared, !seen.contains(t) {
+                    seen.insert(t)
+                    out.append(t)
+                }
+            }
+        }
+        return out.sorted()
+    }
+
     /// Attempts to satisfy the tile under the cube. Returns `true` if a target
     /// was newly cleared (down face matched an uncleared target).
     func tryMatch(col: Int, row: Int, downColor: Int) -> Bool {

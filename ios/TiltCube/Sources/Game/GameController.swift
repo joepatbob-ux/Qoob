@@ -79,6 +79,7 @@ final class GameController {
         viewModel.levelIndex = index
         viewModel.score = index == 0 ? 0 : viewModel.score
         viewModel.tilesRemaining = board.remaining
+        viewModel.targetLegend = board.remainingTargetSymbols()
         viewModel.timeRemaining = level.timeLimit
         levelDeadline = CACurrentMediaTime() + level.timeLimit
         viewModel.phase = .playing
@@ -151,6 +152,7 @@ final class GameController {
             streak += 1
             viewModel.score += 100 + (streak - 1) * 25   // streak bonus
             viewModel.tilesRemaining = board.remaining
+            viewModel.targetLegend = board.remainingTargetSymbols()
             renderer.clearTile(col: cube.col, row: cube.row, colorIndex: cube.downColorIndex)
             audio.playMatch(streak: streak - 1)
             Haptics.match()

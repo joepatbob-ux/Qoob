@@ -26,6 +26,7 @@ struct ContentView: View {
                 VStack {
                     statusBar
                     controlChips
+                    targetLegend
                     Spacer()
                     if viewModel.showButtons {
                         dPad
@@ -108,6 +109,29 @@ struct ContentView: View {
             .opacity(enabled ? 1 : 0.4)
         }
         .disabled(!enabled)
+    }
+
+    // MARK: - Target legend
+
+    /// The distinct depictions still to be found this level.
+    @ViewBuilder
+    private var targetLegend: some View {
+        if !viewModel.targetLegend.isEmpty {
+            HStack(spacing: 8) {
+                Text("FIND")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.6))
+                ForEach(viewModel.targetLegend, id: \.self) { index in
+                    Image(uiImage: SymbolTextures.icon(index))
+                        .resizable()
+                        .frame(width: 30, height: 30)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(.top, 8)
+        }
     }
 
     // MARK: - D-pad

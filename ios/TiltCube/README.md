@@ -87,9 +87,11 @@ buttons/swipes.
 ## How to play
 
 Roll the cat so the depiction on its **bottom** face matches the picture on a
-glowing target tile — that clears it. Clear every target before time runs out.
+glowing target tile — that clears it. The **FIND** legend at the top shows the
+depictions still needed this level. Clear every target before time runs out.
 Consecutive matches build a streak (higher score + a rising bell). Every roll
-and match gives light haptic feedback.
+and match gives light haptic feedback, and the cat gently "breathes" while you
+think.
 
 ### If a tilt rolls the cube the wrong way
 
