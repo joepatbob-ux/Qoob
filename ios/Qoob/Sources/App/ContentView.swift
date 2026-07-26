@@ -180,7 +180,7 @@ struct ContentView: View {
                   button: "Begin")
         case .won:
             panel(title: "Level \(viewModel.levelIndex + 1) complete",
-                  subtitle: "Score \(viewModel.score)\nBreathe. Ready for more?",
+                  subtitle: wonSubtitle,
                   button: "Next level")
         case .lost:
             panel(title: "Time's up",
@@ -255,6 +255,20 @@ struct ContentView: View {
     private func timeString(_ t: TimeInterval) -> String {
         let s = Int(t.rounded(.up))
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    /// Win-screen summary: score, this run's time, best time, "New best!".
+    private var wonSubtitle: String {
+        var lines = ["Score \(viewModel.score)"]
+        if let last = viewModel.lastTime {
+            lines.append("Time \(timeString(last))")
+        }
+        if viewModel.isNewBest {
+            lines.append("★ New best time!")
+        } else if let best = viewModel.bestTime {
+            lines.append("Best \(timeString(best))")
+        }
+        return lines.joined(separator: "\n")
     }
 }
 

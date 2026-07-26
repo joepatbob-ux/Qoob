@@ -152,6 +152,7 @@ Sources/
     Level.swift            procedural level generation + cat face layout
     CatSymbols.swift       the six cube-cat depictions + generated textures
     GamePalette.swift      accent colours + mantras
+    ProgressStore.swift    best times/scores per level (UserDefaults)
   Rendering/               ← the ONLY place SceneKit lives
     GameRenderer.swift     the renderer protocol (the seam)
     SceneKitRenderer.swift SceneKit implementation (meshes, camera, animation)
@@ -203,6 +204,30 @@ Notes:
 The **app icon** is a generated placeholder (`AppIcon.appiconset/icon_1024.png`)
 — replace it with your own 1024×1024 PNG when ready. The cat casts a soft
 shadow onto the floor (tune `shadowRadius` / `shadowColor` in `setupLighting`).
+
+## Progression & records
+
+Levels are generated deterministically from their index, so each level is the
+same board every time — which makes per-level records meaningful. `ProgressStore`
+persists (in `UserDefaults`) the **best completion time** and **best score** per
+level and the highest level reached. The win screen shows your time, flags a
+"★ New best time!", and otherwise shows the best to beat. "Next level" advances
+the index; the difficulty (grid size, target count, time limit) scales with it
+in `Level.generate`.
+
+## Dropping in a 3D cat model
+
+The renderer looks for a bundled **`cube_cat.usdz`** (or `.usdc` / `.scn`); if
+present it's normalised to a unit cube, centred, and used as the cube body in
+place of the procedural box + decals. Add the file to the project (under
+`Sources/`, then re-run `xcodegen generate`) and it takes over automatically —
+no code change.
+
+Important: the model must **depict the six faces in the layout from
+`Level.startingFaces`** (front = face, up = butt, down = 4 paws, left = dot,
+right = ring, back = three dots), so the rolling logic and the visible faces
+stay in agreement. Keep it inside a unit cube centred at the origin; rolling,
+matching, breathing and shadows keep working untouched.
 
 ## The roll math (why the bottom face is always correct)
 

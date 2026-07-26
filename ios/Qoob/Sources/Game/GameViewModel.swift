@@ -26,6 +26,12 @@ final class GameViewModel: ObservableObject {
     @Published var showMantra: Bool = false
     @Published var motionUnavailable: Bool = false
 
+    // Progression / records (for the menus)
+    @Published var bestTime: TimeInterval? = nil   // best for the level in view
+    @Published var bestScore: Int = 0
+    @Published var lastTime: TimeInterval? = nil    // time taken on the last win
+    @Published var isNewBest: Bool = false
+
     // Control scheme. Both can be on at once; swipe gestures are always active.
     @Published var tiltEnabled: Bool = true
     @Published var showButtons: Bool = true

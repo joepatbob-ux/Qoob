@@ -18,6 +18,7 @@ final class GameController {
     private let viewModel: GameViewModel
     private let motion = MotionManager()
     private let audio = AudioEngine()
+    private let progress = ProgressStore()
 
     // Game state
     private var board: BoardModel!
@@ -81,6 +82,10 @@ final class GameController {
         viewModel.tilesRemaining = board.remaining
         viewModel.targetLegend = board.remainingTargetSymbols()
         viewModel.timeRemaining = level.timeLimit
+        viewModel.bestTime = progress.bestTime(level: index)
+        viewModel.bestScore = progress.bestScore(level: index)
+        viewModel.lastTime = nil
+        viewModel.isNewBest = false
         levelDeadline = CACurrentMediaTime() + level.timeLimit
         viewModel.phase = .playing
         Haptics.prepare()
@@ -164,11 +169,18 @@ final class GameController {
     }
 
     private func endGame(won: Bool) {
-        viewModel.phase = won ? .won : .lost
         if won {
             viewModel.score += Int(max(0, viewModel.timeRemaining)) * 10  // time bonus
+            let timeTaken = currentLevel.timeLimit - viewModel.timeRemaining
+            viewModel.lastTime = timeTaken
+            viewModel.isNewBest = progress.recordWin(level: viewModel.levelIndex,
+                                                     time: timeTaken,
+                                                     score: viewModel.score)
+            viewModel.bestTime = progress.bestTime(level: viewModel.levelIndex)
+            viewModel.bestScore = progress.bestScore(level: viewModel.levelIndex)
             audio.playWin()
         }
+        viewModel.phase = won ? .won : .lost
     }
 
     // MARK: - Control

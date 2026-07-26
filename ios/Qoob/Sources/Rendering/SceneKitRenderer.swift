@@ -200,7 +200,29 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         art.name = "cubeArt"
         container.addChildNode(art)
 
-        // Body: fur texture (tinted per face) if provided, else accent colour.
+        if let model = loadCubeModel() {
+            // A supplied 3D model. It must already depict the six faces in the
+            // layout from Level.startingFaces (front = face, up = butt, …), so
+            // the rolling logic and the visible faces stay in agreement.
+            model.castsShadow = true
+            art.addChildNode(model)
+        } else {
+            buildProceduralCube(colors: colors, on: art)
+        }
+
+        // Idle "breathing" wobble — a slow, gentle scale pulse.
+        let breathe = SCNAction.sequence([
+            easedScale(to: 1.03, duration: 1.6),
+            easedScale(to: 1.0, duration: 1.6)
+        ])
+        art.runAction(SCNAction.repeatForever(breathe))
+
+        return container
+    }
+
+    /// The procedural cube-cat: a chamfered box tinted per face + oriented
+    /// glyph/art decals. Used when no 3D model is supplied.
+    private func buildProceduralCube(colors: [Face: Int], on art: SCNNode) {
         let box = SCNBox(width: cubeSize, height: cubeSize, length: cubeSize,
                          chamferRadius: cubeSize * 0.06)
         let order: [Face] = [.front, .right, .back, .left, .up, .down]
@@ -209,8 +231,6 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         bodyNode.castsShadow = true
         art.addChildNode(bodyNode)
 
-        // Glyph decals, one oriented plane per face — hand-made face art if
-        // provided, else the procedural glyph.
         let half = Double(cubeSize) / 2.0 + 0.004   // proud of the face, avoids z-fighting
         for face in Face.allCases {
             let index = colors[face] ?? 0
@@ -226,15 +246,36 @@ final class SceneKitRenderer: NSObject, GameRenderer {
             decal.eulerAngles = euler
             art.addChildNode(decal)
         }
+    }
 
-        // Idle "breathing" wobble — a slow, gentle scale pulse.
-        let breathe = SCNAction.sequence([
-            easedScale(to: 1.03, duration: 1.6),
-            easedScale(to: 1.0, duration: 1.6)
-        ])
-        art.runAction(SCNAction.repeatForever(breathe))
+    /// Loads `cube_cat.usdz` from the bundle if present, normalised to fit a
+    /// unit cube centred at the origin. Returns nil (→ procedural cube) if the
+    /// model isn't bundled. Drop `cube_cat.usdz` into the project to use it.
+    private func loadCubeModel() -> SCNNode? {
+        let exts = ["usdz", "usdc", "scn"]
+        var scene: SCNScene?
+        for ext in exts {
+            if let url = Bundle.main.url(forResource: "cube_cat", withExtension: ext) {
+                scene = try? SCNScene(url: url, options: nil)
+                if scene != nil { break }
+            }
+        }
+        guard let loaded = scene else { return nil }
 
-        return container
+        let flat = loaded.rootNode.flattenedClone()
+        let (minB, maxB) = flat.boundingBox
+        let dx = maxB.x - minB.x, dy = maxB.y - minB.y, dz = maxB.z - minB.z
+        let maxDim = max(dx, max(dy, dz))
+        guard maxDim > 0 else { return nil }
+
+        let s = Float(cubeSize) / maxDim
+        flat.scale = SCNVector3(s, s, s)
+        flat.position = SCNVector3(-(minB.x + maxB.x) / 2 * s,
+                                   -(minB.y + maxB.y) / 2 * s,
+                                   -(minB.z + maxB.z) / 2 * s)
+        let holder = SCNNode()
+        holder.addChildNode(flat)
+        return holder
     }
 
     private func easedScale(to scale: CGFloat, duration: TimeInterval) -> SCNAction {
