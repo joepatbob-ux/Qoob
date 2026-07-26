@@ -43,6 +43,7 @@ struct GameView: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    @MainActor
     final class Coordinator: NSObject {
         var renderer: SceneKitRenderer?
         var controller: GameController?
