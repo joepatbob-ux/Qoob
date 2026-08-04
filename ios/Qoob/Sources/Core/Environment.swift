@@ -2,10 +2,9 @@
 //  Environment.swift
 //  Qoob
 //
-//  Themed settings for where the cat is playing. Environments cycle as the
-//  player progresses — a living room, then a kitchen, a bedroom, a yard —
-//  changing the floor, backdrop mood, and which furniture/obstacles appear.
-//  A pure content layer: no game rules change between environments.
+//  Quiet room moods on a shared Classic Soft linen world. Environments cycle
+//  as the player progresses — same calm field, soft tint shifts and furniture
+//  sets. No game rules change between environments.
 //
 
 import UIKit
@@ -40,33 +39,33 @@ enum Environment: String, CaseIterable {
         }
     }
 
-    /// Floor-tile colour (used when no carpet/floor texture is supplied).
+    /// Floor-tile colour — soft linen family, lightly tinted per room.
     var floorColor: UIColor {
         switch self {
-        case .livingRoom: return UIColor(red: 0.20, green: 0.19, blue: 0.24, alpha: 1)
-        case .kitchen:    return UIColor(red: 0.78, green: 0.79, blue: 0.82, alpha: 1)
-        case .bedroom:    return UIColor(red: 0.30, green: 0.24, blue: 0.33, alpha: 1)
-        case .yard:       return UIColor(red: 0.34, green: 0.52, blue: 0.30, alpha: 1)
+        case .livingRoom: return UIColor(red: 0.90, green: 0.86, blue: 0.80, alpha: 1)
+        case .kitchen:    return UIColor(red: 0.91, green: 0.89, blue: 0.85, alpha: 1)
+        case .bedroom:    return UIColor(red: 0.91, green: 0.86, blue: 0.84, alpha: 1)
+        case .yard:       return UIColor(red: 0.86, green: 0.88, blue: 0.80, alpha: 1)
         }
     }
 
-    /// Surrounding ground colour (the plane beyond the play tiles).
+    /// Surrounding ground — a step quieter than the play tiles.
     var groundColor: UIColor {
         switch self {
-        case .livingRoom: return UIColor(red: 0.12, green: 0.11, blue: 0.16, alpha: 1)
-        case .kitchen:    return UIColor(red: 0.55, green: 0.56, blue: 0.60, alpha: 1)
-        case .bedroom:    return UIColor(red: 0.16, green: 0.13, blue: 0.19, alpha: 1)
-        case .yard:       return UIColor(red: 0.26, green: 0.44, blue: 0.24, alpha: 1)
+        case .livingRoom: return UIColor(red: 0.84, green: 0.80, blue: 0.74, alpha: 1)
+        case .kitchen:    return UIColor(red: 0.85, green: 0.83, blue: 0.79, alpha: 1)
+        case .bedroom:    return UIColor(red: 0.85, green: 0.80, blue: 0.78, alpha: 1)
+        case .yard:       return UIColor(red: 0.78, green: 0.82, blue: 0.72, alpha: 1)
         }
     }
 
-    /// Backdrop / clear colour behind the scene.
+    /// Backdrop — warm paper, barely shifted per mood.
     var background: UIColor {
         switch self {
-        case .livingRoom: return UIColor(red: 0.07, green: 0.08, blue: 0.12, alpha: 1)
-        case .kitchen:    return UIColor(red: 0.14, green: 0.15, blue: 0.17, alpha: 1)
-        case .bedroom:    return UIColor(red: 0.08, green: 0.07, blue: 0.11, alpha: 1)
-        case .yard:       return UIColor(red: 0.30, green: 0.44, blue: 0.54, alpha: 1) // sky
+        case .livingRoom: return UIColor(red: 0.94, green: 0.91, blue: 0.86, alpha: 1)
+        case .kitchen:    return UIColor(red: 0.95, green: 0.93, blue: 0.90, alpha: 1)
+        case .bedroom:    return UIColor(red: 0.95, green: 0.91, blue: 0.90, alpha: 1)
+        case .yard:       return UIColor(red: 0.90, green: 0.93, blue: 0.88, alpha: 1)
         }
     }
 

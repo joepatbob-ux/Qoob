@@ -2,9 +2,9 @@
 //  Level.swift
 //  Qoob
 //
-//  A level is a grid size, a cube start cell, a time limit, and a set of
-//  target tiles. Levels are generated procedurally so the game is endlessly
-//  playable without any external asset files.
+//  A level is a grid, furniture, Life Force (ordered), and Simple Blocks.
+//  Inspired by Endorfun: absorb each Life Force in turn (only one on the
+//  field at a time); Simple Blocks clear when the cube's top face matches.
 //
 
 import Foundation
@@ -28,7 +28,10 @@ struct Level {
     let height: Int
     let startCol: Int
     let startRow: Int
-    let targets: [Target]
+    /// Ordered Life Force squares (first is active; rest spawn after each absorb).
+    let lifeForce: [Target]
+    /// Simple Blocks present from the start ù clear path / score, not required to win.
+    let blocks: [Target]
     let furniture: [Furniture]
     let blocked: Set<GridCell>
     let items: [GridCell]        // pushable toys' start cells
@@ -36,9 +39,9 @@ struct Level {
     let environment: Environment
     let perched: [PerchedToy]    // toys sitting on furniture to knock off
 
-    /// Every target colour is reachable by rolling (the cube carries all six
-    /// colours), and every target *cell* is placed only in the region the cube
-    /// can actually reach around the furniture ‚Äî so levels are always solvable.
+    /// Levels are always solvable around furniture: Life Force and blocks sit
+    /// only on reachable floor, and empty cells let the player reorient the cube
+    /// (Endorfun's U / Fence gambits) so any top-face colour is reachable.
     static func generate(index: Int, seed: UInt64? = nil) -> Level {
         var rng = SeededGenerator(seed: seed ?? UInt64(0xE7D0 &+ UInt64(index) &* 2654435761))
 
@@ -70,53 +73,78 @@ struct Level {
                                   row: Int(rng.next() % UInt64(size)))
             let piece = Furniture(kind: kind, origin: origin, cols: fp.cols, rows: fp.rows)
             guard fits(piece) else { continue }
-            // Keep the reachable area connected & roomy.
             var candidate = blocked
             for c in piece.cells { candidate.insert(c) }
             let reach = reachable(from: start, size: size, blocked: candidate).count
-            if reach < (size * size) - (size * size) / 3 { continue }  // don't wall off too much
+            if reach < (size * size) - (size * size) / 3 { continue }
             furniture.append(piece)
             blocked = candidate
         }
 
         let reach = reachable(from: start, size: size, blocked: blocked)
-
-        // --- Targets, only on reachable free cells ---
         let freeReachable = reach.subtracting([start])
-        let maxTargets = max(1, freeReachable.count)
-        let targetCount = min(3 + index, maxTargets)
+        var pool = Array(freeReachable)
+        var used = Set<GridCell>([start])
 
-        var placed = Set<GridCell>()
-        var targets: [Target] = []
-        var tAttempts = 0
-        let pool = Array(freeReachable)
-        while targets.count < targetCount && tAttempts < 800 && !pool.isEmpty {
-            tAttempts += 1
-            let cell = pool[Int(rng.next() % UInt64(pool.count))]
-            if placed.contains(cell) { continue }
-            placed.insert(cell)
+        func takeCell() -> GridCell? {
+            guard !pool.isEmpty else { return nil }
+            let i = Int(rng.next() % UInt64(pool.count))
+            let cell = pool.remove(at: i)
+            used.insert(cell)
+            return cell
+        }
+
+        // --- Life Force queue (win condition) ---
+        let lfCount = min(2 + index / 2, min(max(1, freeReachable.count / 3), 8))
+        var lifeForce: [Target] = []
+        for _ in 0..<lfCount {
+            guard let cell = takeCell() else { break }
             let color = Int(rng.next() % UInt64(GamePalette.count))
-            targets.append(Target(col: cell.col, row: cell.row, colorIndex: color))
+            lifeForce.append(Target(col: cell.col, row: cell.row, colorIndex: color))
+        }
+        // Degenerate layouts (walled-in start): still place one Life Force nearby.
+        if lifeForce.isEmpty {
+            let fallback = GridCell(col: min(start.col + 1, size - 1), row: start.row)
+            if fallback != start, !blocked.contains(fallback) {
+                lifeForce.append(Target(col: fallback.col, row: fallback.row,
+                                        colorIndex: Int(rng.next() % UInt64(GamePalette.count))))
+            } else {
+                lifeForce.append(Target(col: start.col, row: min(start.row + 1, size - 1),
+                                        colorIndex: 0))
+            }
+        }
+
+        // --- Simple Blocks (path / points); denser as levels advance ---
+        let blockCount = min(1 + index, min(max(0, pool.count / 2), 12))
+        var blocks: [Target] = []
+        for _ in 0..<blockCount {
+            guard let cell = takeCell() else { break }
+            let color = Int(rng.next() % UInt64(GamePalette.count))
+            blocks.append(Target(col: cell.col, row: cell.row, colorIndex: color))
         }
 
         // --- Pushable toys (bonus): each placed so a single push solves it ---
-        // For goal G and push direction d: item sits at I = G-d and the cat can
-        // stand at S = G-2d, so rolling from S in +d shoves the toy onto G.
         let itemCount = min(index / 3, 3)
         var items: [GridCell] = []
         var goals: [GridCell] = []
-        var usedItems = blocked.union(placed).union([start])
+        var usedItems = used.union(blocked)
         let dirs = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+        let goalPool = Array(freeReachable.subtracting(usedItems))
         var iAttempts = 0
-        while items.count < itemCount && iAttempts < 400 && !pool.isEmpty {
+        while items.count < itemCount && iAttempts < 400 && !goalPool.isEmpty {
             iAttempts += 1
-            let g = pool[Int(rng.next() % UInt64(pool.count))]
+            let g = goalPool[Int(rng.next() % UInt64(goalPool.count))]
             let (dc, dr) = dirs[Int(rng.next() % 4)]
             let itemCell = GridCell(col: g.col - dc, row: g.row - dr)
             let stand = GridCell(col: g.col - 2 * dc, row: g.row - 2 * dr)
             let needed = [g, itemCell, stand]
             if Set(needed).count != 3 { continue }
             if !needed.allSatisfy({ reach.contains($0) && !usedItems.contains($0) }) { continue }
+            // Don't sit toys on coloured squares.
+            if needed.contains(where: { c in
+                lifeForce.contains(where: { $0.col == c.col && $0.row == c.row })
+                    || blocks.contains(where: { $0.col == c.col && $0.row == c.row })
+            }) { continue }
             items.append(itemCell)
             goals.append(g)
             needed.forEach { usedItems.insert($0) }
@@ -143,7 +171,8 @@ struct Level {
         return Level(index: index,
                      width: size, height: size,
                      startCol: start.col, startRow: start.row,
-                     targets: targets,
+                     lifeForce: lifeForce,
+                     blocks: blocks,
                      furniture: furniture,
                      blocked: blocked,
                      items: items,
@@ -186,7 +215,7 @@ struct Level {
 }
 
 /// Small deterministic PRNG (SplitMix64) so a given level index always
-/// generates the same board ‚Äî handy for testing and fair for scoring.
+/// generates the same board ù handy for testing and fair for scoring.
 struct SeededGenerator {
     private var state: UInt64
     init(seed: UInt64) { state = seed }

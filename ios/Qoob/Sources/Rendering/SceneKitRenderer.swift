@@ -127,11 +127,14 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let color = GamePalette.color(colorIndex)
 
         if let tile = tileNodes[key] {
-            // Keep the depiction; brighten the slot to mark it satisfied.
-            tile.geometry?.firstMaterial?.emission.contents = color.withAlphaComponent(0.5)
+            // Flash, then settle back to plain floor — square is gone from the field.
+            tile.geometry?.firstMaterial?.emission.contents = color.withAlphaComponent(0.55)
             tile.runAction(SCNAction.sequence([
                 SCNAction.moveBy(x: 0, y: 0.08, z: 0, duration: 0.12),
-                SCNAction.moveBy(x: 0, y: -0.08, z: 0, duration: 0.18)
+                SCNAction.moveBy(x: 0, y: -0.08, z: 0, duration: 0.18),
+                SCNAction.run { [weak self] node in
+                    self?.restyleFloorTile(node, col: col, row: row)
+                }
             ]))
         }
         if let ring = ringNodes[key] {
@@ -143,6 +146,23 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                 SCNAction.removeFromParentNode()
             ]))
             ringNodes[key] = nil
+        }
+    }
+
+    func revealLifeForce(col: Int, row: Int, colorIndex: Int) {
+        let key = "\(col),\(row)"
+        if let tile = tileNodes[key] {
+            styleLifeForceTile(tile, colorIndex: colorIndex)
+            tile.opacity = 0
+            tile.runAction(SCNAction.fadeIn(duration: 0.35))
+        }
+        if ringNodes[key] == nil {
+            let highlight = makeHighlight(index: colorIndex, strongPulse: true)
+            highlight.position = v3(Double(col), 0.02, Double(row))
+            highlight.opacity = 0
+            boardNode.addChildNode(highlight)
+            ringNodes[key] = highlight
+            highlight.runAction(SCNAction.fadeIn(duration: 0.35))
         }
     }
 
@@ -194,24 +214,33 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let ambient = SCNNode()
         ambient.light = SCNLight()
         ambient.light!.type = .ambient
-        ambient.light!.intensity = 520
-        ambient.light!.color = UIColor(white: 0.9, alpha: 1)
+        ambient.light!.intensity = 700
+        ambient.light!.color = UIColor(red: 1.0, green: 0.98, blue: 0.94, alpha: 1)
         scene.rootNode.addChildNode(ambient)
 
         let key = SCNNode()
         key.light = SCNLight()
         key.light!.type = .directional
-        key.light!.intensity = 780
+        key.light!.intensity = 520
+        key.light!.color = UIColor(red: 1.0, green: 0.97, blue: 0.92, alpha: 1)
         key.light!.castsShadow = true
-        // Forward mode so the cat casts a real, soft shadow onto the carpet/
-        // floor (deferred is a screen-space overlay and reads flatter).
         key.light!.shadowMode = .forward
-        key.light!.shadowColor = UIColor(white: 0, alpha: 0.34)
-        key.light!.shadowRadius = 8            // soft penumbra
-        key.light!.shadowSampleCount = 16      // smooth edges
+        key.light!.shadowColor = UIColor(red: 0.35, green: 0.30, blue: 0.25, alpha: 0.18)
+        key.light!.shadowRadius = 12
+        key.light!.shadowSampleCount = 16
         key.light!.shadowMapSize = CGSize(width: 2048, height: 2048)
-        key.eulerAngles = v3(-Double.pi / 3, Double.pi / 6, 0)
+        key.eulerAngles = v3(-Double.pi / 3.2, Double.pi / 7, 0)
         scene.rootNode.addChildNode(key)
+
+        // Soft fill from the opposite side — keeps the cat readable without glare.
+        let fill = SCNNode()
+        fill.light = SCNLight()
+        fill.light!.type = .directional
+        fill.light!.intensity = 220
+        fill.light!.color = UIColor(red: 0.95, green: 0.96, blue: 1.0, alpha: 1)
+        fill.light!.castsShadow = false
+        fill.eulerAngles = v3(-Double.pi / 5, -Double.pi / 3, 0)
+        scene.rootNode.addChildNode(fill)
     }
 
     private func setupCamera() {
@@ -292,7 +321,7 @@ final class SceneKitRenderer: NSObject, GameRenderer {
     /// glyph/art decals. Used when no 3D model is supplied.
     private func buildProceduralCube(colors: [Face: Int], on art: SCNNode) {
         let box = SCNBox(width: cubeSize, height: cubeSize, length: cubeSize,
-                         chamferRadius: cubeSize * 0.06)
+                         chamferRadius: cubeSize * 0.14) // rounder, cuter toy edges
         let order: [Face] = [.front, .right, .back, .left, .up, .down]
         box.materials = order.map { bodyMaterial(colors[$0] ?? 0) }
         let bodyNode = SCNNode(geometry: box)
@@ -369,27 +398,39 @@ final class SceneKitRenderer: NSObject, GameRenderer {
 
     // MARK: - Materials & tiling
 
-    /// Cube-body material for one face: fur (tinted by the face's accent
-    /// colour) if the texture exists, otherwise a flat accent colour.
+    /// Cream fur body, softly washed with the face accent — classic toy look.
     private func bodyMaterial(_ index: Int) -> SCNMaterial {
         let accent = GamePalette.color(index)
         let m = SCNMaterial()
         if let fur = BundledTextures.fur {
             m.diffuse.contents = fur
-            m.multiply.contents = accent               // tint the grey fur per face
+            m.multiply.contents = softMix(GamePalette.catFur, accent, t: 0.28)
             setTiling(m.diffuse, SCNMatrix4MakeScale(1.5, 1.5, 1))
             if let n = BundledTextures.furNormal {
                 m.normal.contents = n
                 setTiling(m.normal, SCNMatrix4MakeScale(1.5, 1.5, 1))
             }
-            m.roughness.contents = 0.9
+            m.roughness.contents = 0.92
         } else {
-            m.diffuse.contents = accent
-            m.roughness.contents = 0.5
+            m.diffuse.contents = softMix(GamePalette.catFur, accent, t: 0.32)
+            m.roughness.contents = 0.78
         }
-        m.emission.contents = accent.withAlphaComponent(0.08)
+        m.emission.contents = accent.withAlphaComponent(0.04)
         m.metalness.contents = 0.0
         return m
+    }
+
+    /// Mix two colours in sRGB (t = amount of `b`).
+    private func softMix(_ a: UIColor, _ b: UIColor, t: CGFloat) -> UIColor {
+        var ar: CGFloat = 0, ag: CGFloat = 0, ab: CGFloat = 0, aa: CGFloat = 0
+        var br: CGFloat = 0, bg: CGFloat = 0, bb: CGFloat = 0, ba: CGFloat = 0
+        a.getRed(&ar, green: &ag, blue: &ab, alpha: &aa)
+        b.getRed(&br, green: &bg, blue: &bb, alpha: &ba)
+        let u = max(0, min(1, t))
+        return UIColor(red: ar + (br - ar) * u,
+                       green: ag + (bg - ag) * u,
+                       blue: ab + (bb - ab) * u,
+                       alpha: aa + (ba - aa) * u)
     }
 
     private func setTiling(_ prop: SCNMaterialProperty, _ transform: SCNMatrix4) {
@@ -446,10 +487,11 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let d = CGFloat(piece.rows) * cubeSize - margin
         let h = piece.kind.height
 
-        let box = SCNBox(width: w, height: h, length: d, chamferRadius: 0.08)
+        let box = SCNBox(width: w, height: h, length: d, chamferRadius: 0.14)
         let mat = SCNMaterial()
         mat.diffuse.contents = piece.kind.color
-        mat.roughness.contents = 0.9
+        mat.roughness.contents = 0.95
+        mat.emission.contents = UIColor.clear
         box.firstMaterial = mat
 
         let node = SCNNode(geometry: box)
@@ -549,30 +591,31 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         return 0
     }
 
-    /// A yarn-ball toy the cat pushes.
+    /// A soft yarn-ball toy the cat pushes.
     private func makeToy() -> SCNNode {
         let ball = SCNSphere(radius: toyRadius)
         let m = SCNMaterial()
-        m.diffuse.contents = UIColor(red: 0.86, green: 0.30, blue: 0.42, alpha: 1) // yarn red
-        m.roughness.contents = 0.8
+        m.diffuse.contents = UIColor(red: 0.86, green: 0.58, blue: 0.62, alpha: 1) // dusty rose
+        m.roughness.contents = 0.92
+        m.emission.contents = UIColor.clear
         ball.firstMaterial = m
         let node = SCNNode(geometry: ball)
         node.castsShadow = true
         return node
     }
 
-    /// A glowing floor pad marking where a toy should be pushed.
+    /// Soft floor pad marking where a toy should be pushed.
     private func makeItemGoalPad() -> SCNNode {
         let disc = SCNCylinder(radius: toyRadius * 1.25, height: 0.03)
         let m = SCNMaterial()
-        m.diffuse.contents = UIColor.white.withAlphaComponent(0.15)
-        m.emission.contents = UIColor(red: 0.95, green: 0.85, blue: 0.45, alpha: 0.55)
+        m.diffuse.contents = UIColor(red: 0.92, green: 0.84, blue: 0.55, alpha: 0.55)
+        m.emission.contents = UIColor(red: 0.95, green: 0.88, blue: 0.55, alpha: 0.18)
         disc.firstMaterial = m
-        let node = SCNNode(geometry: disc)   // cylinder axis is Y → already flat
+        let node = SCNNode(geometry: disc)
         node.castsShadow = false
         node.runAction(SCNAction.repeatForever(SCNAction.sequence([
-            SCNAction.fadeOpacity(to: 0.55, duration: 0.9),
-            SCNAction.fadeOpacity(to: 1.0, duration: 0.9)
+            SCNAction.fadeOpacity(to: 0.55, duration: 1.2),
+            SCNAction.fadeOpacity(to: 1.0, duration: 1.2)
         ])))
         return node
     }
@@ -587,66 +630,85 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                 let cell = board.cells[row][col]
                 let box = SCNBox(width: size, height: tileThickness,
                                  length: size, chamferRadius: 0.03)
-                let mat = SCNMaterial()
-                if let target = cell.target {
-                    // Show the depiction the player must land face-down here.
-                    mat.diffuse.contents = SymbolTextures.tile(target)
-                    mat.emission.contents = GamePalette.color(target).withAlphaComponent(0.10)
-                    mat.roughness.contents = 0.85
-                } else if let tex = floorTexture() {
-                    // Continuous floor across cells: offset each tile's UVs by
-                    // its grid coords so the (seamless) pattern flows unbroken.
-                    let uv = SCNMatrix4MakeTranslation(Float(col), Float(row), 0)
-                    mat.diffuse.contents = tex
-                    setTiling(mat.diffuse, uv)
-                    if let n = BundledTextures.carpetNormal {
-                        mat.normal.contents = n
-                        setTiling(mat.normal, uv)
-                    }
-                    mat.roughness.contents = 0.95
-                } else {
-                    mat.diffuse.contents = environment.floorColor
-                    mat.roughness.contents = 0.85
-                }
-                box.firstMaterial = mat
-
                 let tile = SCNNode(geometry: box)
                 tile.position = v3(Double(col), -Double(tileThickness) / 2.0, Double(row))
                 boardNode.addChildNode(tile)
                 tileNodes["\(col),\(row)"] = tile
 
-                if let target = cell.target {
-                    let highlight = makeHighlight(index: target)
+                if cell.isActiveLifeForce, let color = cell.colorIndex, !cell.cleared {
+                    styleLifeForceTile(tile, colorIndex: color)
+                    let highlight = makeHighlight(index: color, strongPulse: true)
                     highlight.position = v3(Double(col), 0.02, Double(row))
                     boardNode.addChildNode(highlight)
                     ringNodes["\(col),\(row)"] = highlight
+                } else if cell.role == .simpleBlock, let color = cell.colorIndex, !cell.cleared {
+                    styleSimpleBlockTile(tile, colorIndex: color)
+                } else {
+                    restyleFloorTile(tile, col: col, row: row)
                 }
             }
         }
     }
 
-    /// A flat, pulsing square frame that hovers just above an unsolved target
-    /// tile. A frame (not a ring) so it never reads as the "ring" cat face.
-    private func makeHighlight(index: Int) -> SCNNode {
+    private func styleLifeForceTile(_ tile: SCNNode, colorIndex: Int) {
+        let mat = SCNMaterial()
+        mat.diffuse.contents = SymbolTextures.tile(colorIndex)
+        mat.emission.contents = GamePalette.color(colorIndex).withAlphaComponent(0.10)
+        mat.roughness.contents = 0.88
+        tile.geometry?.firstMaterial = mat
+    }
+
+    private func styleSimpleBlockTile(_ tile: SCNNode, colorIndex: Int) {
+        let mat = SCNMaterial()
+        // Soft ceramic chip — quiet obstacle, not a neon hazard.
+        mat.diffuse.contents = softMix(GamePalette.ceramic, GamePalette.color(colorIndex), t: 0.45)
+        mat.emission.contents = UIColor.clear
+        mat.roughness.contents = 0.95
+        tile.geometry?.firstMaterial = mat
+    }
+
+    private func restyleFloorTile(_ tile: SCNNode, col: Int, row: Int) {
+        let mat = SCNMaterial()
+        if let tex = floorTexture() {
+            let uv = SCNMatrix4MakeTranslation(Float(col), Float(row), 0)
+            mat.diffuse.contents = tex
+            setTiling(mat.diffuse, uv)
+            if let n = BundledTextures.carpetNormal {
+                mat.normal.contents = n
+                setTiling(mat.normal, uv)
+            }
+            mat.roughness.contents = 0.95
+        } else {
+            mat.diffuse.contents = environment.floorColor
+            mat.roughness.contents = 0.85
+        }
+        mat.emission.contents = UIColor.clear
+        tile.geometry?.firstMaterial = mat
+    }
+
+    /// A flat, pulsing square frame that hovers just above an active Life Force.
+    private func makeHighlight(index: Int, strongPulse: Bool = false) -> SCNNode {
         let plane = SCNPlane(width: cubeSize * 0.96, height: cubeSize * 0.96)
         let mat = SCNMaterial()
         mat.diffuse.contents = SymbolTextures.frame(index)
-        mat.emission.contents = SymbolTextures.frame(index)   // self-lit so it glows
+        mat.emission.contents = SymbolTextures.frame(index)
         mat.isDoubleSided = true
         mat.blendMode = .add
         plane.firstMaterial = mat
 
         let node = SCNNode(geometry: plane)
-        node.eulerAngles.x = -.pi / 2                         // lay flat on the board
-        node.opacity = 0.9
+        node.eulerAngles.x = -.pi / 2
+        node.opacity = strongPulse ? 1.0 : 0.9
+        let peak: CGFloat = strongPulse ? 1.06 : 1.04
+        let dim: CGFloat = strongPulse ? 0.50 : 0.60
         node.runAction(SCNAction.repeatForever(SCNAction.sequence([
             SCNAction.group([
-                SCNAction.scale(to: 1.08, duration: 0.9),
-                SCNAction.fadeOpacity(to: 0.55, duration: 0.9)
+                SCNAction.scale(to: peak, duration: 1.1),
+                SCNAction.fadeOpacity(to: dim, duration: 1.1)
             ]),
             SCNAction.group([
-                SCNAction.scale(to: 1.0, duration: 0.9),
-                SCNAction.fadeOpacity(to: 0.9, duration: 0.9)
+                SCNAction.scale(to: 1.0, duration: 1.1),
+                SCNAction.fadeOpacity(to: strongPulse ? 0.85 : 0.75, duration: 1.1)
             ])
         ])))
         return node

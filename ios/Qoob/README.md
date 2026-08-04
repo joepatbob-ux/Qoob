@@ -1,12 +1,10 @@
 # Qoob — a cube-cat tilt-and-roll puzzle for iOS
 
-A calm, meditative rolling-puzzle game starring a **cube-cat**: a die whose six
-faces each depict a part of the cat. You roll it around a grid — by **tilting
-your iPhone/iPad** (gyroscope), swiping, or the on-screen D-pad — to land the
-**pictured side face-down** on each glowing target tile. Clear every target at
-your own pace — **there is no time limit**; a gentle clock only counts up so
-per-level best times stay meaningful. Gentle affirmations and a procedural
-ambient soundtrack accompany each match.
+A calm, meditative rolling-puzzle game starring a **cube-cat**. Classic Soft
+look: warm linen field, quiet ink HUD, cream toy-cat with soft pastels. Roll by
+**tilting**, swiping, or D-pad so the **top face** matches each gentle **Life
+Force** pulse. Clear soft ceramic blocks to open paths. **There is no losing** —
+take as long as you like; the clock only counts up for personal bests.
 
 **The cube-cat's six faces** (see `Core/CatSymbols.swift`, drawn procedurally so
 no image assets are needed yet):
@@ -20,8 +18,8 @@ no image assets are needed yet):
 | right | a **ring** |
 | back | **three dots** in a triangle |
 
-Each tile shows the depiction you must roll onto it; the puzzle is tracking the
-cat's orientation so the right side ends up on the bottom.
+Each tile shows the depiction you must roll onto it with matching **top** face;
+the puzzle is tracking the cat's orientation so the right side ends up on top.
 
 This is an **original game inspired by** the 1995 game *Endorfun* — its
 cube-on-a-grid colour-matching feel and meditative tone. It contains **none** of
@@ -87,12 +85,13 @@ buttons/swipes.
 
 ## How to play
 
-Roll the cat so the depiction on its **bottom** face matches the picture on a
-glowing target tile — that clears it. The **FIND** legend at the top shows the
-depictions still needed this level. Clear every target — take as long as you like.
-Consecutive matches build a streak (higher score + a rising bell). Every roll
-and match gives light haptic feedback, and the cat gently "breathes" while you
-think.
+Roll the cat so the depiction on its **top** face matches the pulsing **Life
+Force** tile (Endorfun's merge rule). Wrong colours **block** the roll — use
+empty floor to reorient (U-turns / "Fence" gambits). Solid coloured **blocks**
+clear when you merge with them (+points, open the path). Only one Life Force is
+on the board at a time; absorb it and the next appears. Clear every Life Force
+to finish the level — take as long as you like. Consecutive merges build a
+streak. Every roll and merge gives light haptic feedback.
 
 ### If a tilt rolls the cube the wrong way
 

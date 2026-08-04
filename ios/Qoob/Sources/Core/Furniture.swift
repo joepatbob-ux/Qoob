@@ -19,21 +19,21 @@ enum FurnitureKind: String, CaseIterable {
     // Yard
     case gardenBench, bush, planter
 
-    /// Placeholder colour (used when no 3D model is supplied).
+    /// Soft clay / wood placeholders — quiet on the linen field.
     var color: UIColor {
         switch self {
-        case .sofa:        return UIColor(red: 0.36, green: 0.45, blue: 0.52, alpha: 1) // slate
-        case .coffeeTable: return UIColor(red: 0.52, green: 0.38, blue: 0.26, alpha: 1) // walnut
-        case .armchair:    return UIColor(red: 0.70, green: 0.52, blue: 0.32, alpha: 1) // mustard
-        case .counter:     return UIColor(red: 0.80, green: 0.78, blue: 0.72, alpha: 1) // laminate
-        case .diningTable: return UIColor(red: 0.55, green: 0.40, blue: 0.28, alpha: 1) // oak
-        case .fridge:      return UIColor(red: 0.86, green: 0.88, blue: 0.90, alpha: 1) // steel
-        case .bed:         return UIColor(red: 0.40, green: 0.48, blue: 0.66, alpha: 1) // duvet blue
-        case .dresser:     return UIColor(red: 0.48, green: 0.35, blue: 0.26, alpha: 1) // wood
-        case .nightstand:  return UIColor(red: 0.52, green: 0.40, blue: 0.30, alpha: 1) // wood
-        case .gardenBench: return UIColor(red: 0.46, green: 0.50, blue: 0.44, alpha: 1) // weathered
-        case .bush:        return UIColor(red: 0.28, green: 0.50, blue: 0.28, alpha: 1) // foliage
-        case .planter:     return UIColor(red: 0.68, green: 0.42, blue: 0.32, alpha: 1) // terracotta
+        case .sofa:        return UIColor(red: 0.62, green: 0.68, blue: 0.70, alpha: 1) // mist
+        case .coffeeTable: return UIColor(red: 0.72, green: 0.60, blue: 0.48, alpha: 1) // light walnut
+        case .armchair:    return UIColor(red: 0.78, green: 0.66, blue: 0.52, alpha: 1) // soft mustard
+        case .counter:     return UIColor(red: 0.88, green: 0.86, blue: 0.82, alpha: 1) // stone
+        case .diningTable: return UIColor(red: 0.74, green: 0.62, blue: 0.50, alpha: 1) // oak
+        case .fridge:      return UIColor(red: 0.90, green: 0.90, blue: 0.88, alpha: 1) // porcelain
+        case .bed:         return UIColor(red: 0.72, green: 0.74, blue: 0.82, alpha: 1) // linen blue
+        case .dresser:     return UIColor(red: 0.70, green: 0.58, blue: 0.48, alpha: 1) // wood
+        case .nightstand:  return UIColor(red: 0.72, green: 0.60, blue: 0.50, alpha: 1) // wood
+        case .gardenBench: return UIColor(red: 0.66, green: 0.68, blue: 0.60, alpha: 1) // weathered
+        case .bush:        return UIColor(red: 0.55, green: 0.68, blue: 0.52, alpha: 1) // soft foliage
+        case .planter:     return UIColor(red: 0.78, green: 0.58, blue: 0.48, alpha: 1) // clay
         }
     }
 

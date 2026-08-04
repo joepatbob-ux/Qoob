@@ -38,6 +38,9 @@ protocol GameRenderer: AnyObject {
     /// Play the "target satisfied" flourish for the tile at (col, row).
     func clearTile(col: Int, row: Int, colorIndex: Int)
 
+    /// Spawn the next Life Force onto an empty floor cell (Endorfun one-at-a-time).
+    func revealLifeForce(col: Int, row: Int, colorIndex: Int)
+
     /// Slide a pushable toy one cell, in sync with the cube's roll.
     func moveItem(from: GridCell, to: GridCell, duration: TimeInterval)
 

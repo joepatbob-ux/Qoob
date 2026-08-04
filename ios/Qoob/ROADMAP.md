@@ -3,33 +3,53 @@
 Living design notes so ideas aren't lost. Nothing here is committed scope; it's
 a menu to pull from.
 
-## Environments (themed content) — SHIPPED v1
+## Visual direction — Classic Soft (SHIPPED v1)
 
-`Environment.swift` themes each level: **Living Room → Kitchen → Bedroom → Yard**
-(cycles every 3 levels). Each sets its floor colour, ground colour, backdrop
-mood, and furniture set (living room: sofa/coffee table/armchair; kitchen:
-counter/dining table/fridge; bedroom: bed/dresser/nightstand; yard: bench/bush/
-planter). Optional per-environment floor textures via `floor_<env>` asset slots.
+Qoob's look is **cute + minimal classic**, not arcade-dark:
 
-Still to do: per-environment music/ambient audio; more environments; themed
-obstacle *models* (drop-in `bed.usdz` etc. already works via the fallback).
+- Warm linen / cream field, quiet ink HUD
+- Soft pastel face accents on a cream toy-cat
+- Soft ceramic blocks, gentle Life Force pulse
+- Room moods are quiet tint shifts of the same world
+- **No losing mechanic** — time counts up for records only; levels never fail
 
-## Knock-off-the-furniture — SHIPPED v1
+Still to do visually: drop-in fur/floor textures, USDZ cat, softer furniture
+models, optional paper-grain backdrop.
 
-Some toys start **perched on furniture** (`PerchedToy`). Rolling the cat into
-that furniture **knocks the toy onto the floor** (a tumble animation) for +100,
-after which it's a normal pushable toy. Appears from level 4.
+## HUD / controls — SHIPPED v1
 
-Still to do: "break vs. land safe" variants; toys that must be knocked off before
-their pad can be filled; distinct knock-off sound.
+Play screen stays minimal: a **score** chip (opens the menu) and a quiet
+top→seek legend. The score menu holds:
+
+- **This run** — score, time, left, moves, avg moves between scores
+- **Bests** — best time/score/fewest moves, overall averages
+- **Controls** — Off / D-pad / Split (edge arrows)
+- **Settings** — tilt on/off (swipe always works)
+
+## Endorfun-inspired core rules — SHIPPED v1
+
+Mechanics borrowed from the Guide (assets/copy unused):
+
+- Top-face merge · wrong colour blocks · one Life Force at a time · Simple Blocks
+
+**Explicitly not adopting:** Timer pressure, block-fill lose, punish screens.
+Those stay off the table — Qoob stays meditative.
+
+Optional later (still no lose): soft Multiplier blocks for score flavour only.
+
+## Environments — SHIPPED v1
+
+Living Room → Kitchen → Bedroom → Yard (every 3 levels). Soft linen tints +
+furniture sets. Optional `floor_<env>` textures.
+
+## Knock-off / yarn toys — SHIPPED v1
+
+Bonus yarn balls and perched knock-offs. Optional; never required to win.
 
 ## Other parked ideas
 
-- **Themed goals**: replace the abstract glowing tiles with in-world spots — a
-  food bowl, a sunbeam, a cat bed — so the objective reads diegetically.
-- **Walls / room framing**: baseboards + a rug to frame the play floor.
-- **Special tiles**: slippery (keep rolling), teleport (cat flap), holes.
-- **Game Center**: leaderboards (records already persist in `ProgressStore`).
-- **Real art**: drop-in USDZ cat + furniture, fur/carpet textures, per-face art
-  (hooks already in place — see README).
-- **Haptics/audio polish**: distinct sounds for push vs. match vs. knock-off.
+- Themed seek spots (sunbeam, bowl) instead of abstract pulses
+- Soft walls / rug framing
+- Ice / teleport tiles (still non-punishing)
+- Game Center best times
+- Mac / tvOS (keyboard / remote; no gyro required)

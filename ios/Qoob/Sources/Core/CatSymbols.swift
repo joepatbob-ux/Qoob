@@ -29,15 +29,15 @@ enum CatSymbol: Int, CaseIterable {
         CatSymbol(rawValue: ((index % 6) + 6) % 6) ?? .face
     }
 
-    /// Accent colour for this face (tile tint, glow, cube-face background).
+    /// Soft pastel accent — readable for matching, calm on a linen field.
     var accent: UIColor {
         switch self {
-        case .face:     return UIColor(red: 0.95, green: 0.55, blue: 0.25, alpha: 1) // ginger
-        case .butt:     return UIColor(red: 0.95, green: 0.60, blue: 0.72, alpha: 1) // pink
-        case .paws:     return UIColor(red: 0.30, green: 0.72, blue: 0.68, alpha: 1) // teal
-        case .dot:      return UIColor(red: 0.48, green: 0.48, blue: 0.86, alpha: 1) // indigo
-        case .ring:     return UIColor(red: 0.95, green: 0.78, blue: 0.30, alpha: 1) // gold
-        case .triangle: return UIColor(red: 0.52, green: 0.78, blue: 0.46, alpha: 1) // green
+        case .face:     return UIColor(red: 0.92, green: 0.62, blue: 0.42, alpha: 1) // apricot
+        case .butt:     return UIColor(red: 0.90, green: 0.68, blue: 0.74, alpha: 1) // blush
+        case .paws:     return UIColor(red: 0.52, green: 0.72, blue: 0.68, alpha: 1) // sage
+        case .dot:      return UIColor(red: 0.58, green: 0.62, blue: 0.82, alpha: 1) // periwinkle
+        case .ring:     return UIColor(red: 0.90, green: 0.76, blue: 0.42, alpha: 1) // honey
+        case .triangle: return UIColor(red: 0.62, green: 0.74, blue: 0.52, alpha: 1) // moss
         }
     }
 
@@ -169,10 +169,8 @@ enum SymbolTextures {
         return UIGraphicsImageRenderer(size: CGSize(width: px, height: px), format: format)
     }
 
-    /// Cube-face **decal**: the glyph in white on a transparent background, with
-    /// a soft dark halo so it reads on any accent colour. Placed on an
-    /// explicitly-oriented plane per face by the renderer, so the glyph's "up"
-    /// is controlled precisely (no reliance on SCNBox's per-face UVs).
+    /// Cube-face **decal**: soft ink glyph on transparent — reads on cream fur
+    /// and lightly tinted faces without neon outlines.
     static func decal(_ index: Int) -> UIImage {
         if let cached = faceCache[index] { return cached }
         let symbol = CatSymbol.from(index)
@@ -180,15 +178,15 @@ enum SymbolTextures {
             let ctx = rctx.cgContext
             let full = CGRect(x: 0, y: 0, width: px, height: px)
             let inset = full.insetBy(dx: px * 0.14, dy: px * 0.14)
-            ctx.setShadow(offset: .zero, blur: px * 0.03,
-                          color: UIColor(white: 0, alpha: 0.55).cgColor)
-            symbol.draw(in: ctx, rect: inset, ink: UIColor(white: 1.0, alpha: 0.98))
+            ctx.setShadow(offset: CGSize(width: 0, height: px * 0.008), blur: px * 0.02,
+                          color: UIColor(white: 0, alpha: 0.12).cgColor)
+            symbol.draw(in: ctx, rect: inset, ink: GamePalette.ink.withAlphaComponent(0.88))
         }
         faceCache[index] = img
         return img
     }
 
-    /// A compact HUD chip: white glyph on a rounded accent square.
+    /// A compact HUD chip: ink glyph on a soft pastel rounded square.
     static func icon(_ index: Int) -> UIImage {
         if let cached = iconCache[index] { return cached }
         let symbol = CatSymbol.from(index)
@@ -196,44 +194,47 @@ enum SymbolTextures {
             let ctx = rctx.cgContext
             let full = CGRect(x: 0, y: 0, width: px, height: px)
             let bg = full.insetBy(dx: px * 0.06, dy: px * 0.06)
-            let path = UIBezierPath(roundedRect: bg, cornerRadius: px * 0.22)
-            symbol.accent.setFill(); path.fill()
-            let inset = full.insetBy(dx: px * 0.22, dy: px * 0.22)
-            ctx.setShadow(offset: .zero, blur: px * 0.02,
-                          color: UIColor(white: 0, alpha: 0.4).cgColor)
-            symbol.draw(in: ctx, rect: inset, ink: UIColor(white: 1.0, alpha: 0.98))
+            let path = UIBezierPath(roundedRect: bg, cornerRadius: px * 0.28)
+            symbol.accent.withAlphaComponent(0.55).setFill()
+            path.fill()
+            UIColor(white: 1, alpha: 0.35).setFill()
+            path.fill()
+            let inset = full.insetBy(dx: px * 0.24, dy: px * 0.24)
+            symbol.draw(in: ctx, rect: inset, ink: GamePalette.ink.withAlphaComponent(0.85))
         }
         iconCache[index] = img
         return img
     }
 
-    /// Target-tile texture: the glyph in the accent colour on a cream slot.
+    /// Life Force tile: cream square with a soft accent glyph.
     static func tile(_ index: Int) -> UIImage {
         if let cached = tileCache[index] { return cached }
         let symbol = CatSymbol.from(index)
         let img = renderer().image { rctx in
             let ctx = rctx.cgContext
             let full = CGRect(x: 0, y: 0, width: px, height: px)
-            ctx.setFillColor(UIColor(red: 0.96, green: 0.94, blue: 0.88, alpha: 1).cgColor)
+            ctx.setFillColor(UIColor(red: 0.97, green: 0.95, blue: 0.91, alpha: 1).cgColor)
             ctx.fill(full)
-            let inset = full.insetBy(dx: px * 0.18, dy: px * 0.18)
-            symbol.draw(in: ctx, rect: inset, ink: symbol.accent)
+            // soft inner wash of the accent
+            ctx.setFillColor(symbol.accent.withAlphaComponent(0.18).cgColor)
+            ctx.fill(full.insetBy(dx: px * 0.04, dy: px * 0.04))
+            let inset = full.insetBy(dx: px * 0.20, dy: px * 0.20)
+            symbol.draw(in: ctx, rect: inset, ink: GamePalette.ink.withAlphaComponent(0.75))
         }
         tileCache[index] = img
         return img
     }
 
-    /// A transparent square frame (rounded stroke) used as a pulsing target
-    /// highlight over unsolved tiles.
+    /// Soft rounded frame for the active Life Force pulse.
     static func frame(_ index: Int) -> UIImage {
         if let cached = frameCache[index] { return cached }
         let symbol = CatSymbol.from(index)
         let img = renderer().image { rctx in
             let rect = CGRect(x: 0, y: 0, width: px, height: px)
-                .insetBy(dx: px * 0.08, dy: px * 0.08)
-            let path = UIBezierPath(roundedRect: rect, cornerRadius: px * 0.16)
-            path.lineWidth = px * 0.05
-            symbol.accent.setStroke()
+                .insetBy(dx: px * 0.10, dy: px * 0.10)
+            let path = UIBezierPath(roundedRect: rect, cornerRadius: px * 0.20)
+            path.lineWidth = px * 0.035
+            symbol.accent.withAlphaComponent(0.85).setStroke()
             path.stroke()
         }
         frameCache[index] = img

@@ -2,10 +2,9 @@
 //  GameController.swift
 //  Qoob
 //
-//  The engine-agnostic game orchestrator. It owns game state (BoardModel,
-//  CubeState), the frame loop, the elapsed clock, scoring, input, audio and haptics,
-//  and drives a `GameRenderer` for all visuals. It imports no rendering engine
-//  — swap SceneKitRenderer for another GameRenderer and this file is unchanged.
+//  Engine-agnostic orchestrator. Merge rules follow Endorfun's guide: the
+//  cube's *top* face must match a coloured square to enter/absorb it; Life
+//  Force appears one at a time; Simple Blocks clear for points.
 //
 
 import Foundation
@@ -44,14 +43,10 @@ final class GameController {
         motion.start()
         audio.start()
 
-        // Publish sensor availability on the next runloop tick — mutating
-        // @Published state synchronously during view creation would trip
-        // SwiftUI's "modifying state during view update" warning.
         let available = motion.isAvailable
         DispatchQueue.main.async { [viewModel] in
             viewModel.motionUnavailable = !available
             if !available {
-                // No gyroscope (e.g. Simulator): fall back to manual controls.
                 viewModel.tiltEnabled = false
             }
         }
@@ -70,8 +65,6 @@ final class GameController {
 
         renderer.present(level: level, board: board, cube: cube)
 
-        // Treat the current pose as neutral, so however the device is held now
-        // is "flat".
         motion.calibrate()
 
         isRolling = false
@@ -80,20 +73,19 @@ final class GameController {
         viewModel.levelIndex = index
         viewModel.environmentName = level.environment.displayName
         viewModel.score = index == 0 ? 0 : viewModel.score
-        viewModel.tilesRemaining = board.remaining
-        viewModel.itemsRemaining = board.itemsRemaining
-        viewModel.targetLegend = board.remainingTargetSymbols()
+        publishBoardHUD()
         viewModel.elapsed = 0
         viewModel.bestTime = progress.bestTime(level: index)
         viewModel.bestScore = progress.bestScore(level: index)
+        viewModel.bestMoves = progress.bestMoves(level: index)
         viewModel.lastTime = nil
         viewModel.isNewBest = false
+        viewModel.resetLevelCounters()
         levelStartTime = CACurrentMediaTime()
         viewModel.phase = .playing
         Haptics.prepare()
 
-        // The starting cell is guaranteed target-free, but resolve for safety.
-        resolveMatch()
+        resolveMerge()
     }
 
     // MARK: - Frame loop
@@ -108,8 +100,6 @@ final class GameController {
         guard viewModel.phase == .playing else { return }
 
         let now = CACurrentMediaTime()
-        // No time limit — this is a meditative game. The clock counts up only so
-        // per-level "best time" records stay meaningful; it never ends the level.
         viewModel.elapsed = max(0, now - levelStartTime)
 
         if viewModel.tiltEnabled, let direction = motion.rollDirection() {
@@ -126,15 +116,34 @@ final class GameController {
 
         let (dCol, dRow) = direction.gridDelta
         let target = GridCell(col: cube.col + dCol, row: cube.row + dRow)
-        guard board.passable(col: target.col, row: target.row) else {
-            // Blocked. If it's furniture with a perched toy, knock it off (the
-            // cat still doesn't move onto the furniture).
+
+        // Furniture: impassable. May still knock a perched toy off.
+        if board.isBlocked(col: target.col, row: target.row) {
             if let landing = board.knockOff(at: target) {
                 renderer.knockOffToy(fromFurnitureAt: target, to: landing, duration: rollDuration)
                 viewModel.score += 100
+                viewModel.noteScoreEvent()
                 audio.playMatch(streak: 1)
                 Haptics.match()
+            } else {
+                Haptics.roll() // soft bump
             }
+            nextRollAllowedAt = now + restBetweenRolls
+            return
+        }
+
+        guard board.contains(col: target.col, row: target.row) else {
+            nextRollAllowedAt = now + restBetweenRolls
+            return
+        }
+
+        // Endorfun rule: wrong top colour cannot enter a coloured square.
+        // Predict the top face *after* this roll — that's what lands on the tile.
+        var preview = cube!
+        preview.applyRoll(direction)
+        let topAfterRoll = preview.upColorIndex
+        guard board.canEnter(col: target.col, row: target.row, topColor: topAfterRoll) else {
+            Haptics.roll()
             nextRollAllowedAt = now + restBetweenRolls
             return
         }
@@ -143,8 +152,8 @@ final class GameController {
         if board.hasItem(target) {
             let beyond = GridCell(col: target.col + dCol, row: target.row + dRow)
             guard board.passable(col: beyond.col, row: beyond.row),
-                  !board.hasItem(beyond) else {
-                // Toy is against a wall / furniture / another toy — can't push.
+                  !board.hasItem(beyond),
+                  board.requiredTopColor(col: beyond.col, row: beyond.row) == nil else {
                 nextRollAllowedAt = now + restBetweenRolls
                 return
             }
@@ -153,6 +162,7 @@ final class GameController {
             if landedOnGoal {
                 viewModel.score += 150
                 viewModel.itemsRemaining = board.itemsRemaining
+                viewModel.noteScoreEvent()
                 audio.playMatch(streak: 2)
                 Haptics.match()
             } else {
@@ -161,13 +171,15 @@ final class GameController {
         }
 
         isRolling = true
+        viewModel.noteMove()
         Haptics.roll()
 
         renderer.animateRoll(direction, to: target, duration: rollDuration) { [weak self] in
             guard let self = self else { return }
-            self.cube.applyRoll(direction)          // logical state follows the visual roll
+            self.cube.applyRoll(direction)
+            self.viewModel.topFaceIndex = self.cube.upColorIndex
             self.nextRollAllowedAt = CACurrentMediaTime() + self.restBetweenRolls
-            self.resolveMatch()
+            self.resolveMerge()
             self.isRolling = false
             if self.board.isComplete {
                 self.endGame()
@@ -175,35 +187,66 @@ final class GameController {
         }
     }
 
-    /// Tests the tile under the cube; scores and rewards a match.
-    private func resolveMatch() {
+    /// Merge with the square under the cube using the top face (Endorfun rule).
+    private func resolveMerge() {
         guard let board = board, let cube = cube else { return }
-        let matched = board.tryMatch(col: cube.col, row: cube.row,
-                                     downColor: cube.downColorIndex)
-        if matched {
+        let (result, spawned) = board.tryMerge(col: cube.col, row: cube.row,
+                                               topColor: cube.upColorIndex)
+        switch result {
+        case .none:
+            if board.cell(col: cube.col, row: cube.row)?.colorIndex == nil
+                || board.cell(col: cube.col, row: cube.row)?.cleared == true {
+                streak = 0
+            }
+
+        case .lifeForce(let colorIndex, _):
             streak += 1
-            viewModel.score += 100 + (streak - 1) * 25   // streak bonus
-            viewModel.tilesRemaining = board.remaining
-            viewModel.targetLegend = board.remainingTargetSymbols()
-            renderer.clearTile(col: cube.col, row: cube.row, colorIndex: cube.downColorIndex)
+            viewModel.score += 100 + (streak - 1) * 25
+            viewModel.noteScoreEvent()
+            renderer.clearTile(col: cube.col, row: cube.row, colorIndex: colorIndex)
+            if let next = spawned, let nextColor = board.cell(col: next.col, row: next.row)?.colorIndex {
+                renderer.revealLifeForce(col: next.col, row: next.row, colorIndex: nextColor)
+            }
             audio.playMatch(streak: streak - 1)
             Haptics.match()
             viewModel.flash(mantra: GamePalette.randomMantra())
-        } else if board.cell(col: cube.col, row: cube.row)?.target == nil {
-            // Landing on a neutral/cleared tile gently cools the streak.
-            streak = 0
+            publishBoardHUD()
+
+        case .simpleBlock(let colorIndex):
+            streak += 1
+            viewModel.score += 50 + (streak - 1) * 10
+            viewModel.noteScoreEvent()
+            renderer.clearTile(col: cube.col, row: cube.row, colorIndex: colorIndex)
+            audio.playMatch(streak: max(0, streak - 1))
+            Haptics.match()
+            viewModel.flash(mantra: GamePalette.randomMantra())
+            publishBoardHUD()
         }
     }
 
-    /// The level is complete — the only way a level ends. No losing, no rush.
+    private func publishBoardHUD() {
+        viewModel.tilesRemaining = board.lifeForceRemaining
+        viewModel.itemsRemaining = board.itemsRemaining
+        if let symbol = board.activeLifeForceSymbol() {
+            viewModel.targetLegend = [symbol]
+        } else {
+            viewModel.targetLegend = []
+        }
+        viewModel.topFaceIndex = cube.upColorIndex
+    }
+
     private func endGame() {
         let timeTaken = viewModel.elapsed
+        let moves = viewModel.movesThisLevel
         viewModel.lastTime = timeTaken
         viewModel.isNewBest = progress.recordWin(level: viewModel.levelIndex,
                                                  time: timeTaken,
-                                                 score: viewModel.score)
+                                                 score: viewModel.score,
+                                                 moves: moves)
         viewModel.bestTime = progress.bestTime(level: viewModel.levelIndex)
         viewModel.bestScore = progress.bestScore(level: viewModel.levelIndex)
+        viewModel.bestMoves = progress.bestMoves(level: viewModel.levelIndex)
+        viewModel.refreshAggregates()
         audio.playWin()
         viewModel.phase = .won
     }

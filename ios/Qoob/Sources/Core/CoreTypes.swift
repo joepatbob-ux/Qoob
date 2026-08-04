@@ -42,6 +42,13 @@ enum RollDirection: CaseIterable {
     }
 }
 
+/// What a coloured floor square is for. Inspired by Endorfun's Unified Field:
+/// Life Force advances the level; Simple Blocks clear the path / score points.
+enum TileRole: Equatable {
+    case lifeForce
+    case simpleBlock
+}
+
 /// The cube's logical state: where it sits and which colour is on each face.
 /// Rolling permutes the faces exactly as a physical die. The renderer animates
 /// the same roll visually, so the two never drift.
@@ -50,7 +57,10 @@ struct CubeState {
     var row: Int
     var colors: [Face: Int]
 
-    /// Palette index currently on the bottom face — the one a tile must match.
+    /// Palette index on the top face — Endorfun merges when this matches the square.
+    var upColorIndex: Int { colors[.up] ?? 0 }
+
+    /// Palette index on the bottom face (still tracked for rendering / toys).
     var downColorIndex: Int { colors[.down] ?? 0 }
 
     var cell: GridCell { GridCell(col: col, row: row) }
