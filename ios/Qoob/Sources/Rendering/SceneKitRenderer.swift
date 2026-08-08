@@ -17,6 +17,7 @@
 
 import SceneKit
 import UIKit
+import QuartzCore
 
 @MainActor
 final class SceneKitRenderer: NSObject, GameRenderer {
@@ -29,6 +30,16 @@ final class SceneKitRenderer: NSObject, GameRenderer {
 
     private var boardNode = SCNNode()
     private var cubeNode = SCNNode()
+    /// The cube's deformable art node (child of `cubeNode`); soft-body + fur
+    /// attach here. Never read by game logic.
+    private var cubeArtNode = SCNNode()
+
+    // MARK: Visual-polish layer (purely cosmetic; see Environment/ + these
+    // controllers). Centralized so all environmental animation shares one loop.
+    private let qoob = QoobVisualController()
+    private let effects = EnvironmentEffectsController()
+    private var effectsLink: CADisplayLink?
+    private var lastEffectsTime: CFTimeInterval = 0
 
     /// Tile nodes + their glow rings, keyed by "col,row" for the clear flourish.
     private var tileNodes: [String: SCNNode] = [:]
@@ -55,6 +66,7 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         view.rendersContinuously = true
         setupLighting()
         setupCamera()
+        startEffectsLink()
     }
 
     // MARK: - GameRenderer
@@ -76,11 +88,16 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         buildFurniture(level)
         buildItems(level)
         buildPerched(level)
+        effects.buildVegetation(level: level, board: board, into: boardNode)
         scene.rootNode.addChildNode(boardNode)
 
         cubeNode = makeCubeNode(colors: cube.colors)
         cubeNode.position = worldPosition(col: cube.col, row: cube.row)
         scene.rootNode.addChildNode(cubeNode)
+
+        // Bind the cosmetic soft-body + fur to the freshly built cube.
+        qoob.attach(container: cubeNode, art: cubeArtNode)
+        effects.attachFur(container: cubeNode, art: cubeArtNode, cubeSize: cubeSize)
 
         aimCamera(board: board)
     }
@@ -89,6 +106,10 @@ final class SceneKitRenderer: NSObject, GameRenderer {
                      to target: GridCell,
                      duration: TimeInterval,
                      completion: @escaping () -> Void) {
+
+        // Kick off Qoob's soft-body squash/rebound, timed to this roll. Purely
+        // cosmetic — it only touches the art node, never the roll transform.
+        qoob.beginRoll(duration: duration)
 
         let offset = pivotOffset(direction)
         let pivot = SCNNode()
@@ -252,8 +273,9 @@ final class SceneKitRenderer: NSObject, GameRenderer {
     ///
     /// Structure:
     ///   cube (container — this is what rolls / gets positioned & baked)
-    ///     art (breathing wobble applied here, so it never disturbs the roll
-    ///          transform the game logic reads from the container)
+    ///     art (soft-body squash/rebound + idle breathing are applied here by
+    ///          QoobVisualController, so they never disturb the roll transform
+    ///          the game logic reads from the container)
     ///       body  — chamfered SCNBox tinted per face with the accent colours
     ///       decal×6 — an explicitly-oriented plane per face carrying the glyph
     ///
@@ -267,6 +289,10 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let art = SCNNode()
         art.name = "cubeArt"
         container.addChildNode(art)
+        // Hand the art node to the soft-body controller, which now owns all of
+        // its scale animation (idle breathing + roll squash/rebound), replacing
+        // the old inline breathe action so the two never fight.
+        cubeArtNode = art
 
         if let model = loadCubeModel() {
             // A supplied 3D model. It must already depict the six faces in the
@@ -277,13 +303,6 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         } else {
             buildProceduralCube(colors: colors, on: art)
         }
-
-        // Idle "breathing" wobble — a slow, gentle scale pulse.
-        let breathe = SCNAction.sequence([
-            easedScale(to: 1.03, duration: 1.6),
-            easedScale(to: 1.0, duration: 1.6)
-        ])
-        art.runAction(SCNAction.repeatForever(breathe))
 
         return container
     }
@@ -344,12 +363,6 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         let holder = SCNNode()
         holder.addChildNode(flat)
         return holder
-    }
-
-    private func easedScale(to scale: CGFloat, duration: TimeInterval) -> SCNAction {
-        let a = SCNAction.scale(to: scale, duration: duration)
-        a.timingMode = .easeInEaseOut
-        return a
     }
 
     /// Position + Euler angles that place a decal plane (default normal +Z,
@@ -675,4 +688,37 @@ final class SceneKitRenderer: NSObject, GameRenderer {
         case .back:    return (v3(1, 0, 0),  quarter)
         }
     }
+
+    // MARK: - Environmental effects loop (centralized)
+
+    /// One display link drives ALL cosmetic environmental animation — Qoob's
+    /// soft-body/breathing, fur, and grass — so there is never a per-object
+    /// timer. It is separate from the game's own loop and carries no game logic.
+    private func startEffectsLink() {
+        let link = CADisplayLink(target: self, selector: #selector(stepEffects))
+        link.add(to: .main, forMode: .common)
+        effectsLink = link
+        lastEffectsTime = CACurrentMediaTime()
+    }
+
+    @objc private func stepEffects() {
+        let now = CACurrentMediaTime()
+        var dt = now - lastEffectsTime
+        lastEffectsTime = now
+        if dt < 0 { dt = 0 }
+        if dt > 0.1 { dt = 0.1 }   // clamp after stalls / backgrounding
+
+        qoob.update(dt: dt)
+        // Track the cube's live (possibly mid-roll) position for grass reaction.
+        let cubePos = cubeNode.parent != nil ? cubeNode.presentation.worldPosition : nil
+        effects.update(dt: dt, cubeWorldPosition: cubePos)
+    }
+
+    /// Pause/resume environmental processing (e.g. when the scene is off screen).
+    func setEnvironmentActive(_ active: Bool) {
+        effectsLink?.isPaused = !active
+        if active { lastEffectsTime = CACurrentMediaTime() }
+    }
+
+    deinit { effectsLink?.invalidate() }
 }

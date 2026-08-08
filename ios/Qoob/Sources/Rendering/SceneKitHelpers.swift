@@ -14,3 +14,11 @@ import SceneKit
 func v3(_ x: Double, _ y: Double, _ z: Double) -> SCNVector3 {
     SCNVector3(Float(x), Float(y), Float(z))
 }
+
+/// Same idea for `SCNVector4` (used for `node.rotation`, an axis-angle 4-vector).
+/// Built via the labelled memberwise initializer so there's no literal-overload
+/// ambiguity, matching how `v3` shields SCNVector3 construction.
+@inline(__always)
+func v4(_ x: Double, _ y: Double, _ z: Double, _ w: Double) -> SCNVector4 {
+    SCNVector4(x: Float(x), y: Float(y), z: Float(z), w: Float(w))
+}

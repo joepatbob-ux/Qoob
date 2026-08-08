@@ -210,8 +210,8 @@ final class GameController {
 
     // MARK: - Control
 
-    func pause() { motion.stop() }
-    func resume() { motion.start(); motion.calibrate() }
+    func pause() { motion.stop(); renderer.setEnvironmentActive(false) }
+    func resume() { motion.start(); motion.calibrate(); renderer.setEnvironmentActive(true) }
     func recalibrate() { motion.calibrate() }
 
     deinit { displayLink?.invalidate() }

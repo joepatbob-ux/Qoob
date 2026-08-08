@@ -44,4 +44,13 @@ protocol GameRenderer: AnyObject {
     /// A toy perched on furniture tumbles onto the floor at `landing`, then
     /// becomes a normal pushable toy.
     func knockOffToy(fromFurnitureAt perch: GridCell, to landing: GridCell, duration: TimeInterval)
+
+    /// Enable/disable purely-cosmetic environmental animation (wind, fur, grass,
+    /// Qoob's soft-body). Renderers may pause this off screen to save power; the
+    /// default is a no-op so a minimal renderer needn't implement it.
+    func setEnvironmentActive(_ active: Bool)
+}
+
+extension GameRenderer {
+    func setEnvironmentActive(_ active: Bool) {}
 }

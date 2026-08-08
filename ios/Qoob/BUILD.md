@@ -33,6 +33,9 @@ Linux environment). It's been carefully checked, but if the first build flags
 anything, the most likely spots — all quick fixes — are:
 - **SceneKit numeric types** — everything funnels through the `v3(...)` helper and
   `SCNMatrix4Make*` with `Float`; if a line complains, wrap literals in `Float(...)`.
+  The visual-polish layer also sets `node.rotation` via `SCNVector4(…)`; on iOS its
+  components are `Float`, so bare literals are fine, but wrap in `Float(...)` if the
+  SDK flags ambiguity.
 - **A new SDK API nuance** (e.g. an `SCNAction`/`SCNMaterialProperty` signature).
 - Nothing depends on third-party packages — it's pure SwiftUI + SceneKit +
   CoreMotion + AVFoundation.
@@ -45,7 +48,12 @@ All feel is in plain constants — no logic changes needed to adjust:
 | Roll speed / cadence | `GameController.rollDuration`, `restBetweenRolls` |
 | Tilt sensitivity / inversion | `MotionManager.threshold`, `invertX`, `invertY` |
 | Camera angle (top-down lean) | `SceneKitRenderer.topDownTilt` |
-| Cat breathing amount/speed | `makeCubeNode` breathe action |
+| **Soft-body / wind / fur / grass "feel"** | **`Environment/VisualTuning.swift` (one file, all constants)** |
+| Cat breathing amount/speed | `VisualTuning.qoob` (`breatheAmplitude`, `breathePeriod`) |
+| Squash / rebound / durations | `VisualTuning.qoob` (`squashAmount`, `reboundAmount`, `landDuration`…) |
+| Fur response to wind | `VisualTuning.fur` (`windResponse`, `baseSway`) |
+| Base wind / gusts | `VisualTuning.wind` (`baseStrength`, `gustStrength`, `gustInterval`) |
+| Grass sway / recovery | `VisualTuning.grass` (`swayAmount`, `recovery`, `interactionStrength`) |
 | Shadow softness | `setupLighting` (`shadowRadius`, `shadowColor`) |
 | Furniture heights / colours | `Furniture.swift` |
 | Environment floor/mood colours | `Environment.swift` |
