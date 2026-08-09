@@ -2,9 +2,10 @@
 //  Level.swift
 //  Qoob
 //
-//  A level is a grid size, a cube start cell, a time limit, and a set of
-//  target tiles. Levels are generated procedurally so the game is endlessly
-//  playable without any external asset files.
+//  A level is a grid size, a cube start cell, and a set of target tiles. The
+//  grid is shaped to the screen's aspect ratio so it fills the display. Levels
+//  are generated procedurally so the game is endlessly playable without any
+//  external asset files.
 //
 
 import Foundation
@@ -35,26 +36,51 @@ struct Level {
     let itemGoals: [GridCell]    // spots to push them onto (bonus points)
     let environment: Environment
     let perched: [PerchedToy]    // toys sitting on furniture to knock off
+    let targetRows: Range<Int>   // rows where targets may appear (not under the HUD)
 
     /// Every target colour is reachable by rolling (the cube carries all six
     /// colours), and every target *cell* is placed only in the region the cube
     /// can actually reach around the furniture — so levels are always solvable.
-    static func generate(index: Int, seed: UInt64? = nil) -> Level {
+    static func generate(index: Int, aspect: Double = 0.46, seed: UInt64? = nil) -> Level {
         var rng = SeededGenerator(seed: seed ?? UInt64(0xE7D0 &+ UInt64(index) &* 2654435761))
 
-        // Grid grows gently with progression, capped for phone screens.
-        let size = min(5 + index / 2, 8)
-        let start = GridCell(col: size / 2, row: size / 2)
+        // The board fills the screen, so its shape follows the view's aspect
+        // ratio: a fixed cell count on the short side, more on the long side.
+        // A denser grid (more, smaller cells) reads better full-screen; both
+        // grow gently with progression, capped for phone screens.
+        let shortCells = min(7 + index / 2, 9)
+        let longCap = 15
+        let width: Int
+        let height: Int
+        if aspect >= 1 {
+            height = shortCells                                  // landscape: wider than tall
+            width = max(shortCells, min(longCap, Int((Double(shortCells) * aspect).rounded())))
+        } else {
+            width = shortCells                                   // portrait: taller than wide
+            height = max(shortCells, min(longCap, Int((Double(shortCells) / aspect).rounded())))
+        }
+        let cellCount = width * height
+        let start = GridCell(col: width / 2, row: height / 2)
         let env = Environment.forLevel(index)
 
+        // Reserve the top rows the header overlays and the bottom rows the D-pad
+        // overlays, so targets never spawn under the controls. Fall back to the
+        // whole board if reserving would leave too little room.
+        let topReserved = Int((Double(height) * 0.18).rounded(.up))
+        let bottomReserved = Int((Double(height) * 0.26).rounded(.up))
+        var rowLo = topReserved
+        var rowHi = height - bottomReserved
+        if rowHi - rowLo < 3 { rowLo = 0; rowHi = height }
+        let targetRows = rowLo..<rowHi
+
         // --- Place furniture (impassable), from this environment's set ---
-        let pieceCount = min(1 + index / 2, max(1, (size * size) / 8))
+        let pieceCount = min(1 + index / 2, max(1, cellCount / 8))
         var furniture: [Furniture] = []
         var blocked = Set<GridCell>()
 
         func fits(_ f: Furniture) -> Bool {
             for cell in f.cells {
-                if cell.col < 0 || cell.col >= size || cell.row < 0 || cell.row >= size { return false }
+                if cell.col < 0 || cell.col >= width || cell.row < 0 || cell.row >= height { return false }
                 if cell == start { return false }
                 if blocked.contains(cell) { return false }
             }
@@ -66,20 +92,20 @@ struct Level {
             attempts += 1
             let kind = env.furnitureKinds[Int(rng.next() % UInt64(env.furnitureKinds.count))]
             let fp = kind.footprints[Int(rng.next() % UInt64(kind.footprints.count))]
-            let origin = GridCell(col: Int(rng.next() % UInt64(size)),
-                                  row: Int(rng.next() % UInt64(size)))
+            let origin = GridCell(col: Int(rng.next() % UInt64(width)),
+                                  row: Int(rng.next() % UInt64(height)))
             let piece = Furniture(kind: kind, origin: origin, cols: fp.cols, rows: fp.rows)
             guard fits(piece) else { continue }
             // Keep the reachable area connected & roomy.
             var candidate = blocked
             for c in piece.cells { candidate.insert(c) }
-            let reach = reachable(from: start, size: size, blocked: candidate).count
-            if reach < (size * size) - (size * size) / 3 { continue }  // don't wall off too much
+            let reach = reachable(from: start, width: width, height: height, blocked: candidate).count
+            if reach < cellCount - cellCount / 3 { continue }  // don't wall off too much
             furniture.append(piece)
             blocked = candidate
         }
 
-        let reach = reachable(from: start, size: size, blocked: blocked)
+        let reach = reachable(from: start, width: width, height: height, blocked: blocked)
 
         // --- Targets, only on reachable free cells ---
         let freeReachable = reach.subtracting([start])
@@ -90,9 +116,12 @@ struct Level {
         var targets: [Target] = []
         var tAttempts = 0
         let pool = Array(freeReachable)
-        while targets.count < targetCount && tAttempts < 800 && !pool.isEmpty {
+        // Targets draw from cells outside the reserved (HUD-covered) rows.
+        let restricted = freeReachable.filter { targetRows.contains($0.row) }
+        let targetPool = Array(restricted.isEmpty ? freeReachable : restricted)
+        while targets.count < targetCount && tAttempts < 800 && !targetPool.isEmpty {
             tAttempts += 1
-            let cell = pool[Int(rng.next() % UInt64(pool.count))]
+            let cell = targetPool[Int(rng.next() % UInt64(targetPool.count))]
             if placed.contains(cell) { continue }
             placed.insert(cell)
             let color = Int(rng.next() % UInt64(GamePalette.count))
@@ -132,7 +161,7 @@ struct Level {
             let perch = piece.cells[Int(rng.next() % UInt64(piece.cells.count))]
             let (dc, dr) = dirs[Int(rng.next() % 4)]
             let landing = GridCell(col: perch.col + dc, row: perch.row + dr)
-            if landing.col < 0 || landing.col >= size || landing.row < 0 || landing.row >= size { continue }
+            if landing.col < 0 || landing.col >= width || landing.row < 0 || landing.row >= height { continue }
             if blocked.contains(landing) || !reach.contains(landing) { continue }
             if landing == start || usedItems.contains(landing) { continue }
             if perched.contains(where: { $0.perch == perch || $0.landing == landing }) { continue }
@@ -141,7 +170,7 @@ struct Level {
         }
 
         return Level(index: index,
-                     width: size, height: size,
+                     width: width, height: height,
                      startCol: start.col, startRow: start.row,
                      targets: targets,
                      furniture: furniture,
@@ -149,12 +178,13 @@ struct Level {
                      items: items,
                      itemGoals: goals,
                      environment: env,
-                     perched: perched)
+                     perched: perched,
+                     targetRows: targetRows)
     }
 
     /// 4-neighbour flood fill of cells reachable from `start` without entering
     /// a blocked (furniture) cell.
-    private static func reachable(from start: GridCell, size: Int,
+    private static func reachable(from start: GridCell, width: Int, height: Int,
                                   blocked: Set<GridCell>) -> Set<GridCell> {
         var seen = Set<GridCell>()
         var stack = [start]
@@ -163,7 +193,7 @@ struct Level {
         while let cur = stack.popLast() {
             for (dc, dr) in deltas {
                 let n = GridCell(col: cur.col + dc, row: cur.row + dr)
-                if n.col < 0 || n.col >= size || n.row < 0 || n.row >= size { continue }
+                if n.col < 0 || n.col >= width || n.row < 0 || n.row >= height { continue }
                 if blocked.contains(n) || seen.contains(n) { continue }
                 seen.insert(n)
                 stack.append(n)

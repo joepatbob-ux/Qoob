@@ -2,11 +2,12 @@
 //  ContentView.swift
 //  Qoob
 //
-//  The SwiftUI HUD layered over the SceneKit game: score, elapsed clock, tiles
-//  left, the fading mantra, control toggles, an on-screen D-pad, and the
-//  start / win overlays. There is no time limit — the game is meditative.
+//  The SwiftUI HUD layered over the game: a centred clock, a tappable score
+//  bubble that expands to a points breakdown, the fading mantra, an on-screen
+//  D-pad, a settings gear, and the start overlay. There is no time limit — the
+//  game is meditative.
 //
-//  Control schemes (any combination):
+//  Control schemes live in Settings (any combination):
 //    • Tilt   — gyroscope (real device only)
 //    • Buttons — the on-screen D-pad
 //    • Swipe  — always active, handled in GameView
@@ -14,124 +15,175 @@
 
 import SwiftUI
 
+private extension View {
+    /// Tinted Liquid Glass on iOS 26+, falling back to a frosted material on
+    /// older systems. Pass `nil` for a plain (untinted) glass, and set
+    /// `interactive` on controls so the glass reacts to touch.
+    @ViewBuilder
+    func tintedGlass(_ tint: Color?, in shape: some Shape, interactive: Bool = false) -> some View {
+        if #available(iOS 26.0, *) {
+            let glass: Glass = {
+                let base = tint.map { Glass.regular.tint($0) } ?? .regular
+                return interactive ? base.interactive() : base
+            }()
+            glassEffect(glass, in: shape)
+        } else {
+            background(.ultraThinMaterial, in: shape)
+        }
+    }
+
+    /// The system's interactive Liquid Glass button styling (iOS 26+), tinted,
+    /// with a frosted-material fallback on older systems. Applied to a `Button`,
+    /// this gives the authentic press-flex and specular response that a manual
+    /// `glassEffect` on the label does not.
+    @ViewBuilder
+    func liquidGlassButton(tint: Color?, prominent: Bool, in fallbackShape: some Shape) -> some View {
+        if #available(iOS 26.0, *) {
+            if prominent {
+                // Prominent glass fills with the tint, so the colour reads
+                // clearly — the plain `.glass` variant barely tints its body.
+                buttonStyle(.glassProminent).tint(tint)
+            } else {
+                buttonStyle(.glass)
+            }
+        } else {
+            buttonStyle(.plain).background(.ultraThinMaterial, in: fallbackShape)
+        }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var viewModel = GameViewModel()
 
     var body: some View {
-        ZStack {
-            GameView(viewModel: viewModel)
-                .ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                GameView(viewModel: viewModel)
+                    .ignoresSafeArea()
 
-            if viewModel.phase == .playing {
-                VStack {
-                    statusBar
-                    controlChips
-                    targetLegend
-                    toysBadge
-                    Spacer()
-                    if viewModel.showButtons {
-                        dPad
-                            .padding(.bottom, 12)
+                if viewModel.phase == .playing {
+                    VStack(spacing: 10) {
+                        toysBadge
+                        Spacer()
+                        if viewModel.showButtons {
+                            dPad
+                                .padding(.bottom, 12)
+                        }
+                    }
+                    .padding()
+
+                    scoreBubble
+                        .frame(maxWidth: .infinity, maxHeight: .infinity,
+                               alignment: .topLeading)
+                        .padding()
+
+                    mantraView
+                        .offset(y: -80)
+                        .allowsHitTesting(false)
+                }
+
+                overlay
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if viewModel.phase == .playing {
+                    ToolbarItem(placement: .principal) {
+                        Text(timeString(viewModel.elapsed))
+                            .font(.subheadline.weight(.semibold))
+                            .monospacedDigit()
                     }
                 }
-                .padding()
-
-                mantraView
-                    .offset(y: -80)
-                    .allowsHitTesting(false)
-            }
-
-            overlay
-        }
-        .statusBarHidden(true)
-    }
-
-    // MARK: - Status bar
-
-    private var statusBar: some View {
-        HStack {
-            pill(label: "SCORE", value: "\(viewModel.score)")
-            Spacer()
-            pill(label: "LEFT", value: "\(viewModel.tilesRemaining)")
-            Spacer()
-            pill(label: "TIME", value: timeString(viewModel.elapsed))
-        }
-    }
-
-    private func pill(label: String, value: String) -> some View {
-        VStack(spacing: 2) {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .opacity(0.6)
-            Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .monospacedDigit()
-        }
-        .foregroundColor(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-    }
-
-    // MARK: - Control toggles
-
-    private var controlChips: some View {
-        HStack(spacing: 10) {
-            toggleChip(title: "Tilt",
-                       on: viewModel.tiltEnabled,
-                       enabled: !viewModel.motionUnavailable) {
-                viewModel.tiltEnabled.toggle()
-            }
-            toggleChip(title: "Buttons",
-                       on: viewModel.showButtons,
-                       enabled: true) {
-                viewModel.showButtons.toggle()
-            }
-            Spacer()
-        }
-        .padding(.top, 6)
-    }
-
-    private func toggleChip(title: String, on: Bool, enabled: Bool,
-                            action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(on && enabled ? Color.green : Color.gray.opacity(0.6))
-                    .frame(width: 8, height: 8)
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(.ultraThinMaterial, in: Capsule())
-            .foregroundColor(.white)
-            .opacity(enabled ? 1 : 0.4)
-        }
-        .disabled(!enabled)
-    }
-
-    // MARK: - Target legend
-
-    /// The distinct depictions still to be found this level.
-    @ViewBuilder
-    private var targetLegend: some View {
-        if !viewModel.targetLegend.isEmpty {
-            HStack(spacing: 8) {
-                Text("FIND")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.6))
-                ForEach(viewModel.targetLegend, id: \.self) { index in
-                    Image(uiImage: SymbolTextures.icon(index))
-                        .resizable()
-                        .frame(width: 30, height: 30)
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        viewModel.showSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
-            .padding(.top, 8)
         }
+        .statusBarHidden(true)
+        // The game is dark-themed; lock the scheme so the window/nav-bar chrome
+        // never shows a light (white) border around the full-bleed board.
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $viewModel.showSettings) {
+            SettingsView(viewModel: viewModel)
+        }
+        .onChange(of: viewModel.floorTheme) { _, theme in
+            viewModel.controller?.setFloorTheme(theme)
+        }
+        .onChange(of: viewModel.boardTilt) { _, tilt in
+            viewModel.controller?.setBoardTilt(tilt)
+        }
+    }
+
+    // MARK: - Score bubble
+
+    /// A glass score bubble that expands, on tap, into a points breakdown.
+    private var scoreBubble: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    viewModel.showScoreBreakdown.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(red: 0.95, green: 0.82, blue: 0.35))
+                    Text("\(viewModel.score)")
+                        .font(.system(size: 16, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundColor(.white)
+                    Image(systemName: viewModel.showScoreBreakdown ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white.opacity(0.6))
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .tintedGlass(nil, in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            if viewModel.showScoreBreakdown {
+                scoreBreakdown
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+    }
+
+    /// The itemised points, one row per source (zero rows hidden).
+    private var scoreBreakdown: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            breakdownRow("Matches", value: viewModel.scoreMatches)
+            if viewModel.scoreStreak > 0 {
+                breakdownRow("Streak bonus", value: viewModel.scoreStreak)
+            }
+            if viewModel.toysPushed > 0 {
+                breakdownRow("Toys ×\(viewModel.toysPushed)", value: viewModel.scoreToys)
+            }
+            if viewModel.knockoffs > 0 {
+                breakdownRow("Knock-offs ×\(viewModel.knockoffs)", value: viewModel.scoreKnockoffs)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .tintedGlass(nil, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func breakdownRow(_ label: String, value: Int) -> some View {
+        HStack(spacing: 16) {
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.75))
+            Spacer(minLength: 12)
+            Text("\(value)")
+                .font(.system(size: 13, weight: .semibold))
+                .monospacedDigit()
+                .foregroundColor(.white)
+        }
+        .frame(minWidth: 150, alignment: .leading)
     }
 
     /// Optional "toys to push" bonus indicator.
@@ -148,7 +200,7 @@ struct ContentView: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
+            .tintedGlass(nil, in: Capsule())
             .padding(.top, 6)
         }
     }
@@ -164,17 +216,27 @@ struct ContentView: View {
             }
             dirButton(.back, "chevron.down")
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: dpadAlignment)
+        .padding(.horizontal, viewModel.dpadSide == .center ? 0 : 24)
+    }
+
+    private var dpadAlignment: Alignment {
+        switch viewModel.dpadSide {
+        case .left:   return .leading
+        case .center: return .center
+        case .right:  return .trailing
+        }
     }
 
     private func dirButton(_ direction: RollDirection, _ icon: String) -> some View {
         Button(action: { viewModel.roll(direction) }) {
             Image(systemName: icon)
                 .font(.system(size: 24, weight: .bold))
-                .frame(width: 62, height: 62)
-                .background(.ultraThinMaterial, in: Circle())
                 .foregroundColor(.white)
+                .frame(width: 62, height: 62)
         }
+        // Neutral (untinted) Liquid Glass — no accent colour.
+        .liquidGlassButton(tint: nil, prominent: false, in: Circle())
     }
 
     // MARK: - Mantra
@@ -197,10 +259,6 @@ struct ContentView: View {
             panel(title: "Qoob",
                   subtitle: "Roll the cat so the pictured side lands\nface-down on each glowing tile.",
                   button: "Begin")
-        case .won:
-            panel(title: "Level \(viewModel.levelIndex + 1) complete",
-                  subtitle: wonSubtitle,
-                  button: "Next level")
         case .playing:
             EmptyView()
         }
@@ -224,8 +282,6 @@ struct ContentView: View {
                 .foregroundColor(.white.opacity(0.8))
                 .multilineTextAlignment(.center)
 
-            controlPicker
-
             if viewModel.motionUnavailable {
                 Text("No motion sensor detected — use the buttons or swipes.\n(Tilt needs a real device.)")
                     .font(.system(size: 13))
@@ -243,32 +299,8 @@ struct ContentView: View {
             }
         }
         .padding(36)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28))
+        .tintedGlass(nil, in: RoundedRectangle(cornerRadius: 28))
         .padding(32)
-    }
-
-    /// Control-scheme chooser shown on the menus.
-    private var controlPicker: some View {
-        VStack(spacing: 8) {
-            Text("CONTROLS")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.white.opacity(0.5))
-            HStack(spacing: 10) {
-                toggleChip(title: "Tilt",
-                           on: viewModel.tiltEnabled,
-                           enabled: !viewModel.motionUnavailable) {
-                    viewModel.tiltEnabled.toggle()
-                }
-                toggleChip(title: "Buttons",
-                           on: viewModel.showButtons,
-                           enabled: true) {
-                    viewModel.showButtons.toggle()
-                }
-            }
-            Text("Swipe anywhere works too.")
-                .font(.system(size: 12))
-                .foregroundColor(.white.opacity(0.5))
-        }
     }
 
     // MARK: - Helpers
@@ -276,20 +308,6 @@ struct ContentView: View {
     private func timeString(_ t: TimeInterval) -> String {
         let s = Int(t)
         return String(format: "%d:%02d", s / 60, s % 60)
-    }
-
-    /// Win-screen summary: score, this run's time, best time, "New best!".
-    private var wonSubtitle: String {
-        var lines = ["Score \(viewModel.score)"]
-        if let last = viewModel.lastTime {
-            lines.append("Time \(timeString(last))")
-        }
-        if viewModel.isNewBest {
-            lines.append("★ New best time!")
-        } else if let best = viewModel.bestTime {
-            lines.append("Best \(timeString(best))")
-        }
-        return lines.joined(separator: "\n")
     }
 }
 

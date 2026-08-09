@@ -27,4 +27,10 @@ enum Haptics {
         matcher.impactOccurred()
         matcher.prepare()
     }
+
+    /// A soft nudge when a roll is refused (wrong face for a target tile).
+    static func blocked() {
+        roller.impactOccurred(intensity: 0.3)
+        roller.prepare()
+    }
 }

@@ -18,7 +18,6 @@ final class GameController {
     private let viewModel: GameViewModel
     private let motion = MotionManager()
     private let audio = AudioEngine()
-    private let progress = ProgressStore()
 
     // Game state
     private var board: BoardModel!
@@ -62,12 +61,14 @@ final class GameController {
     // MARK: - Lifecycle
 
     func startGame(atLevel index: Int) {
-        let level = Level.generate(index: index)
+        let level = Level.generate(index: index, aspect: renderer.viewportAspect)
         currentLevel = level
         board = BoardModel(level: level)
         cube = CubeState(col: level.startCol, row: level.startRow,
                          colors: Level.startingFaces())
 
+        renderer.applyFloorTheme(viewModel.floorTheme)
+        renderer.setBoardTilt(viewModel.boardTilt.radians)
         renderer.present(level: level, board: board, cube: cube)
 
         // Treat the current pose as neutral, so however the device is held now
@@ -79,15 +80,18 @@ final class GameController {
         nextRollAllowedAt = 0
         viewModel.levelIndex = index
         viewModel.environmentName = level.environment.displayName
-        viewModel.score = index == 0 ? 0 : viewModel.score
+        if index == 0 {
+            viewModel.score = 0
+            viewModel.scoreMatches = 0
+            viewModel.scoreStreak = 0
+            viewModel.scoreToys = 0
+            viewModel.scoreKnockoffs = 0
+            viewModel.toysPushed = 0
+            viewModel.knockoffs = 0
+        }
         viewModel.tilesRemaining = board.remaining
         viewModel.itemsRemaining = board.itemsRemaining
-        viewModel.targetLegend = board.remainingTargetSymbols()
         viewModel.elapsed = 0
-        viewModel.bestTime = progress.bestTime(level: index)
-        viewModel.bestScore = progress.bestScore(level: index)
-        viewModel.lastTime = nil
-        viewModel.isNewBest = false
         levelStartTime = CACurrentMediaTime()
         viewModel.phase = .playing
         Haptics.prepare()
@@ -132,11 +136,27 @@ final class GameController {
             if let landing = board.knockOff(at: target) {
                 renderer.knockOffToy(fromFurnitureAt: target, to: landing, duration: rollDuration)
                 viewModel.score += 100
-                audio.playMatch(streak: 1)
-                Haptics.match()
+                viewModel.scoreKnockoffs += 100
+                viewModel.knockoffs += 1
+                sfx { audio.playMatch(streak: 1) }
+                haptic { Haptics.match() }
             }
             nextRollAllowedAt = now + restBetweenRolls
             return
+        }
+
+        // A target tile refuses the cube unless the face that *will* land on it
+        // matches — so the cat can only step onto the right depiction. Predict
+        // the down face after this roll without mutating live state.
+        if let wanted = board.target(at: target) {
+            var predicted = cube
+            predicted.applyRoll(direction)
+            if predicted.downColorIndex != wanted {
+                renderer.rejectRoll(direction)
+                haptic { Haptics.blocked() }
+                nextRollAllowedAt = now + restBetweenRolls
+                return
+            }
         }
 
         // If a toy sits on the target cell, try to push it one cell further.
@@ -152,16 +172,18 @@ final class GameController {
             renderer.moveItem(from: target, to: beyond, duration: rollDuration)
             if landedOnGoal {
                 viewModel.score += 150
+                viewModel.scoreToys += 150
+                viewModel.toysPushed += 1
                 viewModel.itemsRemaining = board.itemsRemaining
-                audio.playMatch(streak: 2)
-                Haptics.match()
+                sfx { audio.playMatch(streak: 2) }
+                haptic { Haptics.match() }
             } else {
                 viewModel.itemsRemaining = board.itemsRemaining
             }
         }
 
         isRolling = true
-        Haptics.roll()
+        haptic { Haptics.roll() }
 
         renderer.animateRoll(direction, to: target, duration: rollDuration) { [weak self] in
             guard let self = self else { return }
@@ -169,9 +191,6 @@ final class GameController {
             self.nextRollAllowedAt = CACurrentMediaTime() + self.restBetweenRolls
             self.resolveMatch()
             self.isRolling = false
-            if self.board.isComplete {
-                self.endGame()
-            }
         }
     }
 
@@ -182,37 +201,42 @@ final class GameController {
                                      downColor: cube.downColorIndex)
         if matched {
             streak += 1
-            viewModel.score += 100 + (streak - 1) * 25   // streak bonus
-            viewModel.tilesRemaining = board.remaining
-            viewModel.targetLegend = board.remainingTargetSymbols()
+            let bonus = (streak - 1) * 25
+            viewModel.score += 100 + bonus               // streak bonus
+            viewModel.scoreMatches += 100
+            viewModel.scoreStreak += bonus
             renderer.clearTile(col: cube.col, row: cube.row, colorIndex: cube.downColorIndex)
-            audio.playMatch(streak: streak - 1)
-            Haptics.match()
+            sfx { audio.playMatch(streak: streak - 1) }
+            haptic { Haptics.match() }
             viewModel.flash(mantra: GamePalette.randomMantra())
+            // Endless: a fresh target of a random symbol appears elsewhere.
+            if let spawned = board.spawnTarget(avoiding: cube.cell) {
+                renderer.addTarget(col: spawned.col, row: spawned.row, colorIndex: spawned.colorIndex)
+            }
+            viewModel.tilesRemaining = board.remaining
         } else if board.cell(col: cube.col, row: cube.row)?.target == nil {
             // Landing on a neutral/cleared tile gently cools the streak.
             streak = 0
         }
     }
 
-    /// The level is complete — the only way a level ends. No losing, no rush.
-    private func endGame() {
-        let timeTaken = viewModel.elapsed
-        viewModel.lastTime = timeTaken
-        viewModel.isNewBest = progress.recordWin(level: viewModel.levelIndex,
-                                                 time: timeTaken,
-                                                 score: viewModel.score)
-        viewModel.bestTime = progress.bestTime(level: viewModel.levelIndex)
-        viewModel.bestScore = progress.bestScore(level: viewModel.levelIndex)
-        audio.playWin()
-        viewModel.phase = .won
-    }
+
+    // MARK: - Feedback (gated by Settings)
+
+    private func sfx(_ play: () -> Void) { if viewModel.soundEnabled { play() } }
+    private func haptic(_ tap: () -> Void) { if viewModel.hapticsEnabled { tap() } }
 
     // MARK: - Control
 
     func pause() { motion.stop(); renderer.setEnvironmentActive(false) }
     func resume() { motion.start(); motion.calibrate(); renderer.setEnvironmentActive(true) }
     func recalibrate() { motion.calibrate() }
+
+    /// Live floor-theme change from Settings.
+    func setFloorTheme(_ theme: FloorTheme) { renderer.applyFloorTheme(theme) }
+
+    /// Live board-tilt change from Settings.
+    func setBoardTilt(_ tilt: BoardTilt) { renderer.setBoardTilt(tilt.radians) }
 
     deinit { displayLink?.invalidate() }
 }

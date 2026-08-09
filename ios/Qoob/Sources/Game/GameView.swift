@@ -3,21 +3,22 @@
 //  Qoob
 //
 //  The SwiftUI ⇄ rendering boundary. It picks a concrete GameRenderer
-//  (SceneKitRenderer today), embeds that renderer's view, injects the renderer
-//  into the engine-agnostic GameController, and adds swipe-to-roll gestures.
+//  (RealityKitRenderer today), embeds that renderer's ARView, injects the
+//  renderer into the engine-agnostic GameController, and adds swipe-to-roll
+//  gestures.
 //
 //  To try a different engine later, construct a different GameRenderer here;
 //  nothing else in the app changes.
 //
 
 import SwiftUI
-import SceneKit
+import RealityKit
 
 struct GameView: UIViewRepresentable {
     @ObservedObject var viewModel: GameViewModel
 
-    func makeUIView(context: Context) -> SCNView {
-        let renderer = SceneKitRenderer()
+    func makeUIView(context: Context) -> ARView {
+        let renderer = RealityKitRenderer()
         let controller = GameController(renderer: renderer, viewModel: viewModel)
 
         context.coordinator.renderer = renderer
@@ -39,13 +40,13 @@ struct GameView: UIViewRepresentable {
         return renderer.view
     }
 
-    func updateUIView(_ uiView: SCNView, context: Context) { }
+    func updateUIView(_ uiView: ARView, context: Context) { }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     @MainActor
     final class Coordinator: NSObject {
-        var renderer: SceneKitRenderer?
+        var renderer: RealityKitRenderer?
         var controller: GameController?
 
         // Swipe up = roll away (up the board); mapping mirrors the camera view.

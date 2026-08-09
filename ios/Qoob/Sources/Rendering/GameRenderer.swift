@@ -3,8 +3,8 @@
 //  Qoob
 //
 //  The seam between the engine-agnostic game core and whatever draws it. The
-//  core calls these methods; an implementation (SceneKitRenderer today, a
-//  RealityKitRenderer or MetalRenderer tomorrow) decides how to render.
+//  core calls these methods; an implementation (RealityKitRenderer today, a
+//  MetalRenderer or other engine tomorrow) decides how to render.
 //
 //  Design contract:
 //   • The core owns all game state (BoardModel, CubeState) and rules.
@@ -23,6 +23,11 @@ import Foundation
 @MainActor
 protocol GameRenderer: AnyObject {
 
+    /// The renderer's viewport aspect ratio (width ÷ height). The core uses it
+    /// to shape the board so it fills the screen. Returns a sensible portrait
+    /// default before the view has been laid out.
+    var viewportAspect: Double { get }
+
     /// Build (or rebuild) all visuals for a fresh level: board tiles, the cube
     /// in its starting cell/orientation, camera framing and lighting.
     func present(level: Level, board: BoardModel, cube: CubeState)
@@ -35,8 +40,17 @@ protocol GameRenderer: AnyObject {
                      duration: TimeInterval,
                      completion: @escaping () -> Void)
 
-    /// Play the "target satisfied" flourish for the tile at (col, row).
+    /// Play the "target satisfied" flourish for the tile at (col, row): the
+    /// depiction disappears and the cell returns to neutral floor.
     func clearTile(col: Int, row: Int, colorIndex: Int)
+
+    /// A fresh target has appeared: dress the neutral tile at (col, row) with
+    /// the depiction and its pulsing highlight.
+    func addTarget(col: Int, row: Int, colorIndex: Int)
+
+    /// A roll was refused (wrong face for a target tile): nudge the cube in
+    /// `direction` and let it settle back, so the block reads as intentional.
+    func rejectRoll(_ direction: RollDirection)
 
     /// Slide a pushable toy one cell, in sync with the cube's roll.
     func moveItem(from: GridCell, to: GridCell, duration: TimeInterval)
@@ -49,6 +63,13 @@ protocol GameRenderer: AnyObject {
     /// Qoob's soft-body). Renderers may pause this off screen to save power; the
     /// default is a no-op so a minimal renderer needn't implement it.
     func setEnvironmentActive(_ active: Bool)
+
+    /// Restyle the floor to `theme`, live: re-skins the ground and every neutral
+    /// tile (target tiles keep their depiction). Also used at level start.
+    func applyFloorTheme(_ theme: FloorTheme)
+
+    /// Lean the camera `radians` off straight-down (0 = top-down). Re-aims live.
+    func setBoardTilt(_ radians: Double)
 }
 
 extension GameRenderer {
