@@ -54,6 +54,7 @@ private extension View {
 
 struct ContentView: View {
     @StateObject private var viewModel = GameViewModel()
+    @SwiftUI.Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -116,6 +117,28 @@ struct ContentView: View {
         .onChange(of: viewModel.boardTilt) { _, tilt in
             viewModel.controller?.setBoardTilt(tilt)
         }
+        .onChange(of: viewModel.soundEnabled) { _, enabled in
+            viewModel.controller?.setSoundEnabled(enabled)
+        }
+        // Hand the frame loop, motion feed, soundscape and clock back to the
+        // system whenever the board isn't the player's focus: off screen, or
+        // behind the Settings sheet (where a held tilt would otherwise keep
+        // rolling Qoob out of sight).
+        .onChange(of: scenePhase) { _, phase in
+            updateRunState(scenePhase: phase, settingsShown: viewModel.showSettings)
+        }
+        .onChange(of: viewModel.showSettings) { _, shown in
+            updateRunState(scenePhase: scenePhase, settingsShown: shown)
+        }
+    }
+
+    private func updateRunState(scenePhase phase: ScenePhase, settingsShown: Bool) {
+        guard let controller = viewModel.controller else { return }
+        if phase == .active && !settingsShown {
+            controller.resume()
+        } else {
+            controller.pause()
+        }
     }
 
     // MARK: - Score bubble
@@ -170,6 +193,10 @@ struct ContentView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .tintedGlass(nil, in: RoundedRectangle(cornerRadius: 16))
+        // The bubble is laid out with `maxWidth: .infinity` for its top-leading
+        // alignment, which the rows' `Spacer` would otherwise stretch across the
+        // whole screen. Hug the content so it reads as a bubble, not a banner.
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func breakdownRow(_ label: String, value: Int) -> some View {

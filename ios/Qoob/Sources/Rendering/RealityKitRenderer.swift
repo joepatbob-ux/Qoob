@@ -93,6 +93,13 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     func present(level: Level, board: BoardModel, cube: CubeState) {
         animator.reset()
+        // Retire any roll still in flight: its deferred bake would otherwise
+        // land on the *new* cube and teleport it to the old roll's target cell,
+        // and its pivot would be orphaned in the scene.
+        rollGeneration &+= 1
+        rollPivot?.removeFromParent()
+        rollPivot = nil
+
         boardAnchor.removeFromParent()
         cubeEntity.removeFromParent()
         tileEntities.removeAll()
@@ -145,16 +152,28 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         pivot.move(to: dest, relativeTo: pivot.parent, duration: duration,
                    timingFunction: .easeInOut)
 
+        rollGeneration &+= 1
+        rollPivot = pivot
+        let generation = rollGeneration
+
         DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
-            guard let self else { return }
+            guard let self, self.rollGeneration == generation else { return }
             // Bake back onto the root and snap to the exact grid centre to avoid
             // floating-point drift over many rolls.
             self.cubeEntity.setParent(self.root, preservingWorldTransform: true)
             pivot.removeFromParent()
+            self.rollPivot = nil
             self.cubeEntity.position = self.worldPosition(col: target.col, row: target.row)
             completion()
         }
     }
+
+    /// Bumped whenever a roll starts or the scene is rebuilt, so a roll's
+    /// deferred bake can tell whether it's still the current one.
+    private var rollGeneration: UInt64 = 0
+    /// The pivot the in-flight roll swings around, held so a rebuild can remove
+    /// it instead of leaving it orphaned under `root`.
+    private var rollPivot: Entity?
 
     func clearTile(col: Int, row: Int, colorIndex: Int) {
         let key = "\(col),\(row)"

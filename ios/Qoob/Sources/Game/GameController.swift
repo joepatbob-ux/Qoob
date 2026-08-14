@@ -28,7 +28,12 @@ final class GameController {
 
     // Timing
     private var displayLink: CADisplayLink?
-    private var levelStartTime: CFTimeInterval = 0
+    /// When the current run of play began. Reset on resume so time spent paused
+    /// or in the background doesn't land on the player's clock.
+    private var runStartTime: CFTimeInterval = 0
+    /// Play time banked by previous runs of this level (before pauses).
+    private var bankedElapsed: TimeInterval = 0
+    private var isPaused = false
 
     // Roll pacing: a brief rest between rolls so a held tilt "rolls downhill"
     // at a pleasant cadence rather than instantly.
@@ -41,7 +46,7 @@ final class GameController {
         self.viewModel = viewModel
 
         motion.start()
-        audio.start()
+        audio.setEnabled(viewModel.soundEnabled)
 
         // Publish sensor availability on the next runloop tick — mutating
         // @Published state synchronously during view creation would trip
@@ -92,9 +97,14 @@ final class GameController {
         viewModel.tilesRemaining = board.remaining
         viewModel.itemsRemaining = board.itemsRemaining
         viewModel.elapsed = 0
-        levelStartTime = CACurrentMediaTime()
+        bankedElapsed = 0
+        runStartTime = CACurrentMediaTime()
         viewModel.phase = .playing
         Haptics.prepare()
+
+        // Starting a level always means play is live, whatever we were paused by.
+        isPaused = false
+        startDisplayLink()
 
         // The starting cell is guaranteed target-free, but resolve for safety.
         resolveMatch()
@@ -103,22 +113,36 @@ final class GameController {
     // MARK: - Frame loop
 
     private func startDisplayLink() {
-        let link = CADisplayLink(target: self, selector: #selector(tick))
+        guard displayLink == nil else { return }
+        // Via a proxy: CADisplayLink retains its target, so targeting `self`
+        // directly would make the controller immortal — it (and the renderer,
+        // motion manager and audio engine it owns) would never deallocate, and
+        // `deinit`'s `invalidate()` could never run to break the cycle.
+        let link = CADisplayLink(target: DisplayLinkProxy(self),
+                                 selector: #selector(DisplayLinkProxy.tick))
         link.add(to: .main, forMode: .common)
         displayLink = link
     }
 
-    @objc private func tick() {
-        guard viewModel.phase == .playing else { return }
+    private func stopDisplayLink() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
 
-        let now = CACurrentMediaTime()
+    fileprivate func tick() {
+        guard !isPaused, viewModel.phase == .playing else { return }
+
         // No time limit — this is a meditative game. The clock counts up only so
         // per-level "best time" records stay meaningful; it never ends the level.
-        viewModel.elapsed = max(0, now - levelStartTime)
+        viewModel.elapsed = currentElapsed()
 
         if viewModel.tiltEnabled, let direction = motion.rollDirection() {
             requestRoll(direction)
         }
+    }
+
+    private func currentElapsed() -> TimeInterval {
+        bankedElapsed + max(0, CACurrentMediaTime() - runStartTime)
     }
 
     // MARK: - Rolling (single entry point for tilt, swipe and D-pad)
@@ -228,9 +252,41 @@ final class GameController {
 
     // MARK: - Control
 
-    func pause() { motion.stop(); renderer.setEnvironmentActive(false) }
-    func resume() { motion.start(); motion.calibrate(); renderer.setEnvironmentActive(true) }
+    /// Stops everything that costs power or would act behind the player's back:
+    /// the frame loop, the motion feed, cosmetic animation, the soundscape, and
+    /// the clock. Called when the app leaves the foreground and while a sheet
+    /// covers the board (a held tilt must not roll Qoob out of sight).
+    func pause() {
+        guard !isPaused else { return }
+        isPaused = true
+        if viewModel.phase == .playing { bankedElapsed = currentElapsed() }
+        stopDisplayLink()
+        motion.stop()
+        audio.stop()
+        renderer.setEnvironmentActive(false)
+    }
+
+    func resume() {
+        guard isPaused else { return }
+        isPaused = false
+        runStartTime = CACurrentMediaTime()
+        motion.start()
+        // However the device is being held now counts as neutral, so coming back
+        // to the game doesn't immediately fling Qoob across the board.
+        motion.calibrate()
+        audio.setEnabled(viewModel.soundEnabled)
+        renderer.setEnvironmentActive(true)
+        startDisplayLink()
+    }
+
     func recalibrate() { motion.calibrate() }
+
+    /// Live sound on/off from Settings. The ambient pad is part of "sound", so
+    /// it has to start and stop with the toggle — gating only the bells left the
+    /// drone playing after the player switched sound off.
+    func setSoundEnabled(_ enabled: Bool) {
+        audio.setEnabled(enabled)
+    }
 
     /// Live floor-theme change from Settings.
     func setFloorTheme(_ theme: FloorTheme) { renderer.applyFloorTheme(theme) }
@@ -238,5 +294,25 @@ final class GameController {
     /// Live board-tilt change from Settings.
     func setBoardTilt(_ tilt: BoardTilt) { renderer.setBoardTilt(tilt.radians) }
 
-    deinit { displayLink?.invalidate() }
+    deinit {
+        displayLink?.invalidate()
+        motion.stop()
+        audio.stop()
+    }
+}
+
+/// A retain-cycle break for `CADisplayLink`, which keeps a strong reference to
+/// its target. The link retains the proxy; the proxy only weakly knows the
+/// controller, so the controller stays free to deallocate.
+private final class DisplayLinkProxy: NSObject {
+    private weak var controller: GameController?
+
+    init(_ controller: GameController) {
+        self.controller = controller
+        super.init()
+    }
+
+    @objc func tick() {
+        MainActor.assumeIsolated { controller?.tick() }
+    }
 }

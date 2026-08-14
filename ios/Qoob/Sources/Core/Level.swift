@@ -115,10 +115,14 @@ struct Level {
         var placed = Set<GridCell>()
         var targets: [Target] = []
         var tAttempts = 0
-        let pool = Array(freeReachable)
+        // Sorted, not just `Array(...)`: `Set` iteration order depends on a
+        // per-process hash seed, so indexing an unsorted pool with the seeded
+        // RNG made a level index generate a *different* board every launch —
+        // defeating the whole point of the deterministic generator.
+        let pool = sortedCells(freeReachable)
         // Targets draw from cells outside the reserved (HUD-covered) rows.
         let restricted = freeReachable.filter { targetRows.contains($0.row) }
-        let targetPool = Array(restricted.isEmpty ? freeReachable : restricted)
+        let targetPool = sortedCells(restricted.isEmpty ? freeReachable : restricted)
         while targets.count < targetCount && tAttempts < 800 && !targetPool.isEmpty {
             tAttempts += 1
             let cell = targetPool[Int(rng.next() % UInt64(targetPool.count))]
@@ -180,6 +184,12 @@ struct Level {
                      environment: env,
                      perched: perched,
                      targetRows: targetRows)
+    }
+
+    /// Cells in a stable row-major order, so a seeded RNG indexing them picks
+    /// the same cell on every launch.
+    private static func sortedCells(_ cells: Set<GridCell>) -> [GridCell] {
+        cells.sorted { ($0.row, $0.col) < ($1.row, $1.col) }
     }
 
     /// 4-neighbour flood fill of cells reachable from `start` without entering
