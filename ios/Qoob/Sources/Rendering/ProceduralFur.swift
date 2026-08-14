@@ -2,18 +2,17 @@
 //  ProceduralFur.swift
 //  Qoob
 //
-//  Code-generated, tileable fur textures so the cube-cat reads as soft fur with
-//  no art assets required. Two maps, both drawn with Core Graphics and cached:
+//  A code-generated, tileable coat texture so Qoob needs no art assets: a
+//  near-white base flecked with fine speckle and faint strands, kept neutral so
+//  the material's baseColor tint decides the actual coat colour.
 //
-//    • albedo — a near-white base flecked with fine speckle and faint vertical
-//      strands. Kept mostly neutral so the material's baseColor tint controls
-//      the actual fur colour.
-//    • normal — a tangent-space normal map whose fine vertical ridges give the
-//      surface a directional, strand-like micro-relief under lighting. This is
-//      also what the shimmer effect scrolls (see `addTextureScroll`).
+//  There was a matching strand normal map here. It's gone: its randomised strand
+//  tilts scattered light away from the camera hard enough to render a near-white
+//  coat as mid-grey, and the plush Qoob now follows is smooth fabric with no
+//  visible strands at all. See `RealityKitRenderer.furMaterial`.
 //
-//  The renderer prefers bundled `fur_albedo` / `fur_normal` assets if present
-//  (see BundledTextures) and falls back to these.
+//  The renderer prefers a bundled `fur_albedo` asset if present (see
+//  BundledTextures) and falls back to this.
 //
 
 import UIKit
@@ -21,7 +20,6 @@ import UIKit
 enum ProceduralFur {
 
     private static var albedoCache: UIImage?
-    private static var normalCache: UIImage?
     private static let px: CGFloat = 256
 
     /// A near-white, subtly-speckled fur albedo (tint it via the material).
@@ -55,37 +53,6 @@ enum ProceduralFur {
             }
         }
         albedoCache = img
-        return img
-    }
-
-    /// A tangent-space normal map: flat blue base with vertical strand ridges
-    /// that tilt the surface normals left/right, reading as fine fur.
-    static func normal() -> UIImage {
-        if let cached = normalCache { return cached }
-        let img = renderer(opaque: true).image { rctx in
-            let ctx = rctx.cgContext
-            // Flat normal pointing straight out (+Z) → RGB (0.5, 0.5, 1.0).
-            ctx.setFillColor(UIColor(red: 0.5, green: 0.5, blue: 1.0, alpha: 1).cgColor)
-            ctx.fill(fullRect)
-
-            var rng = SeededGenerator(seed: 0x0FA5_2E1)
-            // Each strand is a thin vertical line whose red channel deviates from
-            // 0.5, tilting the normal sideways so light catches the ridges.
-            for _ in 0..<600 {
-                let x = CGFloat(rng.next() % UInt64(px))
-                let tiltLeft = rng.next() % 2 == 0
-                let strength = 0.12 + CGFloat(rng.next() % 100) / 100.0 * 0.22
-                let red = tiltLeft ? 0.5 - strength : 0.5 + strength
-                let green = 0.5 + (CGFloat(rng.next() % 100) / 100.0 - 0.5) * 0.10
-                ctx.setStrokeColor(UIColor(red: red, green: green, blue: 1.0, alpha: 0.5).cgColor)
-                ctx.setLineWidth(CGFloat(1 + rng.next() % 2))
-                let jitter = CGFloat(Int(rng.next() % 7)) - 3
-                ctx.move(to: CGPoint(x: x, y: 0))
-                ctx.addLine(to: CGPoint(x: x + jitter, y: px))
-                ctx.strokePath()
-            }
-        }
-        normalCache = img
         return img
     }
 

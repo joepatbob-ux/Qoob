@@ -84,11 +84,14 @@ struct QoobSoftBodyConfig {
 /// Small tufts on Qoob's corners that ruffle in the wind — the *silhouette*
 /// moves while the cube body stays structurally solid.
 struct FurConfig {
-    var enabled: Bool = true
+    /// Off by default. The eight corner tufts never read as fur at the size Qoob
+    /// occupies on screen — tall they were white spikes, short they were specks of
+    /// grit around his outline — and they're a fixed pale colour, so on the black
+    /// coat they showed as bright dots. Qoob's fuzz comes from his material's sheen
+    /// instead. Flip this back on if the tufts get a proper shell-geometry
+    /// treatment; the shared wind still drives the grass either way.
+    var enabled: Bool = false
 
-    // Kept small on purpose. At 0.16 the eight corner tufts stood well clear of
-    // Qoob's outline and read as white spikes or scratches around him rather than
-    // as fur — the more so now that his body is otherwise clean.
     var tuftHeight: Double = 0.07          // how far a tuft sticks out
     var tuftBaseRadius: Double = 0.030     // thickness at the root
 

@@ -79,7 +79,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     override init() {
         view = ARView(frame: .zero, cameraMode: .nonAR, automaticallyConfigureSession: false)
         super.init()
-        view.environment.background = .color(GamePalette.background)
+        view.environment.background = .color(GamePalette.background(appearance))
         view.renderOptions.insert(.disableCameraGrain)
         view.scene.addAnchor(root)
         root.addChild(cameraEntity)
@@ -87,7 +87,44 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         setupLighting()
         animator.attach(to: view)
         effects.attach(to: view)
+        observeAppearanceChanges()
     }
+
+    // MARK: - Light / dark
+
+    /// Which look to draw, taken from the system appearance.
+    private var appearance: Appearance {
+        view.traitCollection.userInterfaceStyle == .light ? .light : .dark
+    }
+
+    /// RealityKit resolves a material's colour when the material is built, so a
+    /// dynamic `UIColor` would be frozen at whatever appearance was active at level
+    /// start. Everything colour-bearing is rebuilt on the switch instead.
+    private func observeAppearanceChanges() {
+        view.registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
+            (view: ARView, _: UITraitCollection) in
+            MainActor.assumeIsolated { [weak self] in self?.applyAppearance() }
+        }
+    }
+
+    private func applyAppearance() {
+        view.environment.background = .color(environment.background(appearance))
+        setupLighting()                     // key/fill differ between the two looks
+        applyFloorTheme(floorTheme)         // re-skins the ground and every tile
+        restyleQoob()
+        for (key, tile) in tileEntities where ringEntities[key] != nil {
+            // Target tiles keep their depiction, but their emission is tuned per
+            // look, so they need rebuilding too.
+            let (col, row) = cellCoords(fromKey: key)
+            if let target = targetIndexByCell[GridCell(col: col, row: row)] {
+                tile.model?.materials = [targetTileMaterial(target)]
+            }
+        }
+    }
+
+    /// Which symbol each live target tile is showing, so tiles can be re-skinned on
+    /// an appearance change without asking the game core to replay the level.
+    private var targetIndexByCell: [GridCell: Int] = [:]
 
     // MARK: - GameRenderer
 
@@ -104,12 +141,13 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         cubeEntity.removeFromParent()
         tileEntities.removeAll()
         ringEntities.removeAll()
+        targetIndexByCell.removeAll()
         itemEntities.removeAll()
         perchedEntities.removeAll()
         itemGoalCells = Set(level.itemGoals)
 
         environment = level.environment
-        view.environment.background = .color(environment.background)
+        view.environment.background = .color(environment.background(appearance))
 
         boardAnchor = Entity()
         root.addChild(boardAnchor)
@@ -202,6 +240,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                 setUnlitOpacity(e, 1 - t)
             }, completion: { [weak ring] in ring?.removeFromParent() })
             ringEntities[key] = nil
+            targetIndexByCell[GridCell(col: col, row: row)] = nil
         }
     }
 
@@ -216,6 +255,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         }
         ringEntities[key]?.removeFromParent()
         addHighlight(col: col, row: row, index: colorIndex)
+        targetIndexByCell[GridCell(col: col, row: row)] = colorIndex
         if let ring = ringEntities[key] {
             setUnlitOpacity(ring, 0)
             animator.run(ring, duration: 0.3, ease: .easeOut, step: { e, t in
@@ -286,7 +326,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // 6000 lux is overcast-daylight bright, which flattened the floor into a
         // pale wash and left nothing for the textures to shade against. Indoor
         // levels, with a wider key/fill ratio, give the rooms some depth.
-        let key = DirectionalLightComponent(color: warmKey, intensity: 2600)
+        let key = DirectionalLightComponent(color: warmKey, intensity: keyIntensity)
         keyLight.components.set(key)
         keyLight.components.set(DirectionalLightComponent.Shadow())
         keyLight.look(at: .zero, from: f3(-3, 6, 3), upVector: f3(0, 1, 0), relativeTo: nil)
@@ -301,7 +341,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // from a rendertarget, which transparent shadow casters need, and our
         // decals are alpha-blended). Needs checking on real hardware before
         // anyone tries to "fix" it in the lighting.
-        let fill = DirectionalLightComponent(color: coolFill, intensity: 900)
+        let fill = DirectionalLightComponent(color: coolFill, intensity: fillIntensity)
         fillLight.components.set(fill)
         fillLight.look(at: .zero, from: f3(4, 5, -3), upVector: f3(0, 1, 0), relativeTo: nil)
         root.addChild(fillLight)
@@ -310,7 +350,21 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// Slightly warm key, slightly cool fill — cheap way to keep a flat top-down
     /// scene from reading as uniformly grey.
     private var warmKey: UIColor { UIColor(red: 1.0, green: 0.96, blue: 0.90, alpha: 1) }
-    private var coolFill: UIColor { UIColor(red: 0.80, green: 0.86, blue: 1.0, alpha: 1) }
+
+    /// The fill is only strongly tinted in dark mode. Light mode runs it more than
+    /// twice as bright to soften the shadows, and at that strength the blue took
+    /// over: the cream cat came out blue-grey rather than cream.
+    private var coolFill: UIColor {
+        switch appearance {
+        case .dark:  return UIColor(red: 0.80, green: 0.86, blue: 1.00, alpha: 1)
+        case .light: return UIColor(red: 0.96, green: 0.97, blue: 1.00, alpha: 1)
+        }
+    }
+
+    /// Light mode is a brighter room with softer shadows; dark mode keeps the wide
+    /// key/fill ratio that gives the night-time rooms their depth.
+    private var keyIntensity: Float { appearance == .light ? 3400 : 2600 }
+    private var fillIntensity: Float { appearance == .light ? 2100 : 900 }
 
     private func setupCamera() {
         // The 3-arg init defaults its field-of-view orientation to vertical
@@ -399,15 +453,11 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
         // Idle breathing + roll squash are owned by the soft-body effect
         // (RealityKitEnvironmentEffects), which drives this art node's scale.
-
-        // Living shimmer: slowly drift the fur's UVs so highlights play across
-        // the strands. A "moving texture" — cheap (UV scroll, no Metal) and
-        // simulator-safe.
-        forEachModel(art) { model in
-            if model.model?.materials.first is PhysicallyBasedMaterial {
-                self.addTextureScroll(model, velocity: SIMD2<Float>(0.015, 0.0))
-            }
-        }
+        //
+        // There used to be a UV-scroll "shimmer" here, drifting the coat's texture
+        // so highlights played across the fur strands. The strands are gone, so it
+        // had nothing left to move — and it was rebuilding a material every frame
+        // for each of the forty-odd pieces Qoob is now made of.
         return container
     }
 
@@ -418,9 +468,8 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// y = -0.5, so a body that wasn't square in profile would swing about a point
     /// off its own surface and look like it was hinged on thin air.
     private func buildCatBody(on art: Entity) {
-        let mesh = MeshResource.generateBox(size: cubeSize, cornerRadius: bodyCornerRadius)
-        let body = ModelEntity(mesh: mesh, materials: [furMaterial()])
-        art.addChild(body)
+        art.addChild(coatPart(.generateBox(size: cubeSize, cornerRadius: bodyCornerRadius),
+                              .body))
     }
 
     /// How soft Qoob's corners are, as a fraction of his size. At 0.5 he'd be a
@@ -464,13 +513,6 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // however `Level.startingFaces` assigns them.
 
     private func addCatFeatures(colors: [Face: Int], on art: Entity) {
-        // Features are tinted a shade deeper than the body. Sculpted in the body's
-        // own ivory they separated only by shading, which at this size read as
-        // noise; a little tonal contrast makes them legible as form.
-        let fur = furMaterial(tint: catMarking)
-        let pink = pbr(catPink, roughness: 0.78)
-        let mark = pbr(catSpot, roughness: 0.9)
-
         for face in Face.allCases {
             let symbol = CatSymbol.from(colors[face] ?? 0)
 
@@ -483,14 +525,54 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             panel.orientation = orientation
 
             switch symbol {
-            case .face:     sculptFace(on: panel, fur: fur, pink: pink)
-            case .butt:     sculptRump(on: panel, body: furMaterial(), fur: fur, pink: pink)
-            case .paws:     sculptPaws(on: panel, pink: pink)
-            case .dot:      sculptSpot(on: panel, mark: mark)
-            case .ring:     sculptRing(on: panel, mark: mark)
-            case .triangle: sculptThreeSpots(on: panel, mark: mark)
+            case .face:     sculptFace(on: panel)
+            case .butt:     sculptRump(on: panel)
+            case .paws:     sculptPaws(on: panel)
+            case .dot:      sculptSpot(on: panel)
+            case .ring:     sculptRing(on: panel)
+            case .triangle: sculptThreeSpots(on: panel)
             }
             art.addChild(panel)
+        }
+
+        // Ears last, and on the body rather than a side: they're pinched out of the
+        // loaf's own top corners, so they belong to the silhouette, not to a face.
+        addEars(colors: colors, on: art)
+    }
+
+    // MARK: Coat roles
+    //
+    // Each piece of Qoob is tagged with what it *is* rather than what colour it
+    // currently has, so an appearance switch can re-tint him in place. Rebuilding
+    // him instead would drop his roll orientation and orphan the soft-body and fur
+    // effects, which hold references to his art node.
+
+    private enum CoatRole: String {
+        case body, marking, skin, eye
+    }
+
+    private func coatMaterial(_ role: CoatRole) -> PhysicallyBasedMaterial {
+        switch role {
+        case .body:    return furMaterial(tint: CatCoat.body(appearance))
+        case .marking: return furMaterial(tint: CatCoat.marking(appearance))
+        case .skin:    return pbr(CatCoat.nose(appearance), roughness: 0.78)
+        case .eye:     return pbr(CatCoat.eye(appearance), roughness: 0.28)
+        }
+    }
+
+    /// A tagged mesh, so `restyleQoob` can find it again.
+    private func coatPart(_ mesh: MeshResource, _ role: CoatRole) -> ModelEntity {
+        let part = ModelEntity(mesh: mesh, materials: [coatMaterial(role)])
+        part.name = role.rawValue
+        return part
+    }
+
+    /// Re-tints Qoob for the current appearance: cream cat in light, black cat with
+    /// blue eyes in dark.
+    private func restyleQoob() {
+        forEachModel(cubeArt) { model in
+            guard let role = CoatRole(rawValue: model.name) else { return }
+            model.model?.materials = [self.coatMaterial(role)]
         }
     }
 
@@ -501,33 +583,31 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // that hug the surface, so they read as fur colour from above and don't break
     // his outline the way the old decal planes did.
 
-    private func sculptSpot(on panel: Entity, mark: PhysicallyBasedMaterial) {
-        panel.addChild(markingPatch(radius: 0.16, x: 0, y: 0, mark: mark))
+    private func sculptSpot(on panel: Entity) {
+        panel.addChild(markingPatch(radius: 0.16, x: 0, y: 0))
     }
 
-    private func sculptRing(on panel: Entity, mark: PhysicallyBasedMaterial) {
+    private func sculptRing(on panel: Entity) {
         // Built from a circle of small patches: there's no torus primitive, and a
         // ring of dabs reads more like a natural coat marking anyway.
         let dabs = 14
         for i in 0..<dabs {
             let angle = Float(i) / Float(dabs) * 2 * .pi
             panel.addChild(markingPatch(radius: 0.042,
-                                        x: cos(angle) * 0.16, y: sin(angle) * 0.16,
-                                        mark: mark))
+                                        x: cos(angle) * 0.16, y: sin(angle) * 0.16))
         }
     }
 
-    private func sculptThreeSpots(on panel: Entity, mark: PhysicallyBasedMaterial) {
+    private func sculptThreeSpots(on panel: Entity) {
         for (dx, dy) in [(Float(0), Float(0.16)), (-0.16, -0.12), (0.16, -0.12)] {
-            panel.addChild(markingPatch(radius: 0.08, x: dx, y: dy, mark: mark))
+            panel.addChild(markingPatch(radius: 0.08, x: dx, y: dy))
         }
     }
 
     /// A single marking: a sphere squashed almost flat and seated on the surface, so
     /// it paints onto the coat rather than protruding from it.
-    private func markingPatch(radius: Float, x: Float, y: Float,
-                              mark: PhysicallyBasedMaterial) -> ModelEntity {
-        let patch = ModelEntity(mesh: .generateSphere(radius: radius), materials: [mark])
+    private func markingPatch(radius: Float, x: Float, y: Float) -> ModelEntity {
+        let patch = coatPart(.generateSphere(radius: radius), .marking)
         seat(patch, x: x, y: y)
         patch.scale = f3(1, 1, 0.10)
         return patch
@@ -545,47 +625,70 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         entity.position = f3(Double(x), Double(y), Double(surfaceDepth(x: x, y: y) + proud))
     }
 
-    /// The head: two ears at the top corners and a muzzle over the drawn nose.
-    /// Relief only — protrusions stay shallow so they read as anatomy rather than
-    /// as hardware bolted to a box.
-    private func sculptFace(on panel: Entity, fur: PhysicallyBasedMaterial,
-                            pink: PhysicallyBasedMaterial) {
+    /// Ears pinched out of the loaf's top corners.
+    ///
+    /// They used to be wedges parked on the face, in a contrasting tone, which read
+    /// as hardware bolted to a box. On the cushion plush this is modelled on, the
+    /// ears are the cushion's own corners drawn up into soft points — so these are
+    /// built in the *body's* frame at the two top corners of the head side, in the
+    /// body's own colour, as a taper of shrinking spheres that merges into the
+    /// corner it grows from.
+    private func addEars(colors: [Face: Int], on art: Entity) {
+        // Whichever side carries the face is the front of the head; the ears sit on
+        // the top corners shared by that side and the spine.
+        guard let headFace = Face.allCases.first(where: {
+            CatSymbol.from(colors[$0] ?? 0) == .face
+        }) else { return }
+
+        let (_, orientation) = faceFrame(headFace, offset: 0)
+        let holder = Entity()
+        holder.orientation = orientation
+
         for side in [Float(-1), 1] {
-            let ear = Entity()
+            let corner = f3(Double(side) * 0.30, 0.30, 0.24)
+            let tip = f3(Double(side) * 0.44, 0.56, 0.16)
 
-            let outer = ModelEntity(mesh: .generateBox(width: 0.26, height: 0.30, depth: 0.14,
-                                                       cornerRadius: 0.05),
-                                    materials: [fur])
-            ear.addChild(outer)
+            let beads = 5
+            for i in 0..<beads {
+                let t = Float(i) / Float(beads - 1)
+                let bead = coatPart(.generateSphere(radius: 0.115 * (1 - 0.62 * t)), .body)
+                bead.position = mix(corner, tip, t: SIMD3<Float>(repeating: t))
+                holder.addChild(bead)
+            }
 
-            let inner = ModelEntity(mesh: .generateBox(width: 0.13, height: 0.15, depth: 0.05,
-                                                       cornerRadius: 0.03),
-                                    materials: [pink])
-            inner.position = f3(0, 0.01, 0.07)
-            ear.addChild(inner)
-
-            // Up at the top of the head, splayed outward and leaning out. Seated on
-            // the surface, so they stay planted on the rounded shoulder.
-            seat(ear, x: side * 0.26, y: 0.27, proud: 0.02)
-            ear.orientation = quat(side * -0.34, f3(0, 0, 1)) * quat(0.30, f3(1, 0, 0))
-            panel.addChild(ear)
+            // A dab of skin tone inside each ear, the way the plush has a paler
+            // inner ear — small enough that it never reads as a second marking.
+            let inner = coatPart(.generateSphere(radius: 0.05), .skin)
+            inner.position = mix(corner, tip, t: SIMD3<Float>(repeating: 0.45))
+                + f3(0, 0, 0.05)
+            inner.scale = f3(1, 1.3, 0.45)
+            holder.addChild(inner)
         }
+        art.addChild(holder)
+    }
 
-        // Muzzle, low on the face where a snout sits.
-        let muzzle = ModelEntity(mesh: .generateSphere(radius: 0.12), materials: [pink])
-        seat(muzzle, x: 0, y: -0.10)
-        muzzle.scale = f3(1.5, 0.85, 0.5)
-        panel.addChild(muzzle)
-
-        // Eyes: shallow dark patches, the only thing left standing in for the old
-        // drawn face. Without them the head reads as a blank muzzle-and-ears blob.
+    /// The head: a minimal face — two almond eyes and a small nose, nothing more.
+    ///
+    /// Deliberately sparse, following the plush: the previous version had a big
+    /// domed muzzle that swallowed the middle of the side and left him looking
+    /// snouted rather than cat-like.
+    private func sculptFace(on panel: Entity) {
         for side in [Float(-1), 1] {
-            let eye = ModelEntity(mesh: .generateSphere(radius: 0.055),
-                                  materials: [pbr(catEye, roughness: 0.35)])
-            seat(eye, x: side * 0.14, y: 0.07)
-            eye.scale = f3(1, 1.15, 0.35)
+            let eye = coatPart(.generateSphere(radius: 0.062), .eye)
+            seat(eye, x: side * 0.155, y: 0.075)
+            eye.scale = f3(0.85, 1.25, 0.30)      // almond, not round
             panel.addChild(eye)
         }
+
+        let nose = coatPart(.generateSphere(radius: 0.055), .skin)
+        seat(nose, x: 0, y: -0.075)
+        nose.scale = f3(1.25, 0.9, 0.45)
+        panel.addChild(nose)
+
+        // No whiskers. They were tried as thin boxes and, at the size Qoob actually
+        // occupies on screen, a whisker is about a pixel wide — six of them read as
+        // specks of dirt around his face rather than as whiskers. On the plush this
+        // follows they're printed lines, which geometry can't stand in for here.
     }
 
     /// The backside: just the tail, curling up over his back.
@@ -593,16 +696,14 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// Haunches were tried here and removed. As broad shallow domes they competed
     /// with everything else on the side and read as grey ovals stuck on rather
     /// than as a cat. The tail alone says "rear end" immediately.
-    private func sculptRump(on panel: Entity, body: PhysicallyBasedMaterial,
-                            fur: PhysicallyBasedMaterial, pink: PhysicallyBasedMaterial) {
+    private func sculptRump(on panel: Entity) {
         // Closely-spaced overlapping segments, so it reads as one continuous curl
         // rather than a dotted line. A tail is meant to extend past the body, so
         // unlike the ears it can protrude freely without looking bolted on.
         let segments = 14
         for i in 0..<segments {
             let t = Float(i) / Float(segments - 1)
-            let segment = ModelEntity(mesh: .generateSphere(radius: 0.062 * (1 - 0.5 * t)),
-                                      materials: [fur])
+            let segment = coatPart(.generateSphere(radius: 0.062 * (1 - 0.5 * t)), .body)
             // A hooked curl: out and up, then back over itself. It starts on the
             // surface and lifts away from there, so the base is planted.
             let angle = Float(t) * 2.4
@@ -612,41 +713,29 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             panel.addChild(segment)
         }
 
-        let pucker = ModelEntity(mesh: .generateSphere(radius: 0.05), materials: [pink])
+        let pucker = coatPart(.generateSphere(radius: 0.05), .skin)
         seat(pucker, x: 0, y: -0.05)
         pucker.scale = f3(1, 1, 0.5)
         panel.addChild(pucker)
     }
 
     /// Four paw pads, so landing this side up genuinely reads as paws in the air.
-    private func sculptPaws(on panel: Entity, pink: PhysicallyBasedMaterial) {
+    private func sculptPaws(on panel: Entity) {
         for (dx, dy) in [(Float(-0.18), Float(-0.15)), (0.18, -0.15), (-0.18, 0.21), (0.18, 0.21)] {
-            let pad = ModelEntity(mesh: .generateSphere(radius: 0.10), materials: [pink])
+            let pad = coatPart(.generateSphere(radius: 0.10), .skin)
             seat(pad, x: dx, y: dy)
             pad.scale = f3(1, 1, 0.45)
             panel.addChild(pad)
 
             // Toe beans.
             for tx in [Float(-0.085), 0.0, 0.085] {
-                let toe = ModelEntity(mesh: .generateSphere(radius: 0.037), materials: [pink])
+                let toe = coatPart(.generateSphere(radius: 0.037), .skin)
                 seat(toe, x: dx + tx, y: dy + (tx == 0 ? 0.145 : 0.12))
                 toe.scale = f3(1, 1, 0.45)
                 panel.addChild(toe)
             }
         }
     }
-
-    /// Qoob's coat: a warm ivory body with slightly deeper markings on the
-    /// sculpted parts, and pink for the bare skin (inner ear, muzzle, paw pads).
-    private var catIvory: UIColor { UIColor(red: 0.90, green: 0.87, blue: 0.81, alpha: 1) }
-    /// Ears and tail: a mid tone, the way a cat's extremities darken.
-    private var catMarking: UIColor { UIColor(red: 0.70, green: 0.63, blue: 0.57, alpha: 1) }
-    /// Coat spots and rings. Much darker than the ears, because these markings are
-    /// what identifies three of Qoob's six sides now that the decals are gone — at
-    /// the ears' tone they read as faint dents rather than as markings you can name.
-    private var catSpot: UIColor { UIColor(red: 0.38, green: 0.31, blue: 0.28, alpha: 1) }
-    private var catPink: UIColor { UIColor(red: 0.93, green: 0.68, blue: 0.70, alpha: 1) }
-    private var catEye: UIColor { UIColor(red: 0.16, green: 0.14, blue: 0.18, alpha: 1) }
 
     /// A deliberately-supplied body mesh: a loose `cube_cat.usdz` / `.usdc` /
     /// `.reality` dropped into the bundle. Returns nil normally, so the sculpted
@@ -696,37 +785,44 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     // MARK: - Materials & tiling
 
-    /// The cube-cat's fur: a tuned PBR surface. A tiled fur albedo + tangent-
-    /// space normal give strand micro-relief; `sheen` adds the soft fabric rim
-    /// light that reads as fuzz; `anisotropy` stretches highlights along the
-    /// strand direction; a faint `clearcoat` gives a healthy-coat sheen. This
-    /// fakes fur convincingly without shell geometry (which would need a
-    /// device-only CustomMaterial). Bundled `fur_albedo` / `fur_normal` assets
-    /// win if present, else procedural fur (ProceduralFur) is used.
+    /// Qoob's coat: soft matte fabric, the way a cushion plush actually looks.
+    ///
+    /// This used to be a fur surface — a tiled strand normal map, anisotropic
+    /// highlights and a strong clearcoat, all aimed at faking fur without shell
+    /// geometry. Two problems. The strand normals scattered light away from the
+    /// camera hard enough to turn a 0.94-albedo cream coat into mid-grey, well
+    /// darker than the floor beside it. And the plush this now follows has no
+    /// visible strands at all: it's smooth fabric. Dropping the normal map and the
+    /// anisotropy both fixes the value and matches the reference.
+    ///
+    /// `sheen` stays — that's what gives fabric its soft rim — scaled by how dark
+    /// the coat is, so the black cat isn't rimmed back to grey.
     private func furMaterial(tint: UIColor? = nil) -> PhysicallyBasedMaterial {
         var m = PhysicallyBasedMaterial()
-        let tint = tint ?? catIvory
+        let tint = tint ?? CatCoat.body(appearance)
 
+        // A very faint speckle, so the coat isn't a dead flat fill.
         let albedo = BundledTextures.fur ?? ProceduralFur.albedo()
         if let tex = loadTexture(albedo, semantic: .color) {
             m.baseColor = .init(tint: tint, texture: repeatTexture(tex))
         } else {
             m.baseColor = .init(tint: tint)
         }
-        let normal = BundledTextures.furNormal ?? ProceduralFur.normal()
-        if let n = loadTexture(normal, semantic: .normal) {
-            m.normal = .init(texture: repeatTexture(n))
-        }
         m.textureCoordinateTransform = .init(scale: SIMD2<Float>(furTiling, furTiling))
 
-        m.roughness = 0.72
+        m.roughness = 0.88          // matte fabric, not a glossy toy
         m.metallic = 0.0
-        m.sheen = .init(tint: UIColor(white: 1.0, alpha: 1))
-        m.anisotropyLevel = .init(floatLiteral: 0.4)
-        m.anisotropyAngle = .init(floatLiteral: 0.0)
-        m.clearcoat = .init(floatLiteral: 0.25)
-        m.clearcoatRoughness = .init(floatLiteral: 0.85)
+        m.sheen = .init(tint: UIColor(white: CGFloat(sheenStrength(for: tint)), alpha: 1))
         return m
+    }
+
+    /// Sheen and clearcoat, scaled by the coat's own brightness so dark coats stay
+    /// dark. Never quite zero — even black plush catches a little light on the nap.
+    private func sheenStrength(for tint: UIColor) -> Float {
+        var white: CGFloat = 1
+        var alpha: CGFloat = 1
+        guard tint.getWhite(&white, alpha: &alpha) else { return 1 }
+        return Float(0.12 + 0.88 * white)
     }
 
     /// How many times the fur texture tiles across one cube face.
@@ -780,7 +876,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         if floorTheme == .checkerboard { return nil }
         return BundledTextures.image(environment.floorTextureName)
             ?? BundledTextures.carpet
-            ?? ProceduralTextures.roomFloor(for: environment)
+            ?? ProceduralTextures.roomFloor(for: environment, appearance)
     }
 
     private func floorNormal() -> UIImage? {
@@ -806,7 +902,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             mat.textureCoordinateTransform = .init(scale: SIMD2<Float>(extent, extent))
             mat.roughness = 0.95
         } else {
-            mat = pbr(environment.groundColor, roughness: 1.0)
+            mat = pbr(environment.groundColor(appearance), roughness: 1.0)
         }
         let node = ModelEntity(mesh: mesh, materials: [mat])
         node.position = f3(Double(board.width - 1) / 2.0,
@@ -854,7 +950,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             m.roughness = 0.95
             return m
         }
-        return pbr(environment.floorColor, roughness: 0.85)
+        return pbr(environment.floorColor(appearance), roughness: 0.85)
     }
 
     /// How many copies of the floor texture span one board cell (see the
@@ -877,7 +973,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                 mat.textureCoordinateTransform = .init(scale: SIMD2<Float>(extent, extent))
                 mat.roughness = 0.95
             } else {
-                mat = pbr(environment.groundColor, roughness: 1.0)
+                mat = pbr(environment.groundColor(appearance), roughness: 1.0)
             }
             ground.model?.materials = [mat]
         }
@@ -1047,6 +1143,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
                 if let target = cell.target {
                     addHighlight(col: col, row: row, index: target)
+                    targetIndexByCell[GridCell(col: col, row: row)] = target
                 }
             }
         }
@@ -1106,20 +1203,4 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         for child in entity.children { forEachModel(child, body) }
     }
 
-    /// Continuously scrolls a PBR entity's primary UV offset (a "moving
-    /// texture"): each frame the offset advances by `velocity × elapsedTime`,
-    /// preserving the material's existing tiling scale. With a repeat-wrapped
-    /// sampler the offset wraps seamlessly. Pure UV animation — no Metal, and
-    /// it runs on the simulator. Used for the cube's fur shimmer, but works on
-    /// any PBR entity (e.g. a future flowing-water floor).
-    private func addTextureScroll(_ entity: ModelEntity, velocity: SIMD2<Float>) {
-        let scale = (entity.model?.materials.first as? PhysicallyBasedMaterial)?
-            .textureCoordinateTransform.scale ?? SIMD2<Float>(1, 1)
-        animator.addPulser(entity) { e, t in
-            guard let model = e as? ModelEntity,
-                  var mat = model.model?.materials.first as? PhysicallyBasedMaterial else { return }
-            mat.textureCoordinateTransform = .init(offset: velocity * Float(t), scale: scale)
-            model.model?.materials = [mat]
-        }
-    }
 }

@@ -9,6 +9,18 @@
 
 import UIKit
 
+/// Which of the two looks the game is wearing. Everything that has a light and a
+/// dark form — the rooms, and Qoob's own coat — takes one of these, resolved from
+/// the system appearance by the renderer.
+///
+/// It's a plain enum rather than dynamic `UIColor`s because RealityKit resolves a
+/// material's colour once, when the material is built: a dynamic colour would be
+/// baked to whichever appearance happened to be active at level start and then
+/// never change.
+enum Appearance {
+    case light, dark
+}
+
 enum GamePalette {
 
     /// Number of distinct faces/targets — one per cube-cat symbol.
@@ -19,11 +31,13 @@ enum GamePalette {
         CatSymbol.from(index).accent
     }
 
-    /// A calm background tint for the scene.
-    static let background = UIColor(red: 0.07, green: 0.08, blue: 0.12, alpha: 1.0)
-
-    /// Neutral (non-target) floor tile colour.
-    static let neutralTile = UIColor(red: 0.16, green: 0.17, blue: 0.22, alpha: 1.0)
+    /// A calm background tint for the scene, before a level picks its room.
+    static func background(_ appearance: Appearance) -> UIColor {
+        switch appearance {
+        case .dark:  return UIColor(red: 0.07, green: 0.08, blue: 0.12, alpha: 1)
+        case .light: return UIColor(red: 0.91, green: 0.90, blue: 0.88, alpha: 1)
+        }
+    }
 
     /// Short positive affirmations shown on each successful match.
     static let mantras: [String] = [
@@ -44,4 +58,48 @@ enum GamePalette {
     static func randomMantra() -> String {
         mantras.randomElement() ?? "breathe"
     }
+}
+
+/// Qoob's coat, in its two colourways: a cream plush cat for light mode and a
+/// black one for dark. Modelled on the pair of cushion plushes this is based on —
+/// the black cat's bright blue eyes are the one strong accent on it.
+///
+/// Markings invert with the coat. Dark spots on a black cat would be invisible,
+/// and they're the only way to tell three of Qoob's six sides apart.
+enum CatCoat {
+
+    /// The body.
+    static func body(_ appearance: Appearance) -> UIColor {
+        switch appearance {
+        case .light: return UIColor(red: 0.94, green: 0.92, blue: 0.88, alpha: 1)
+        case .dark:  return UIColor(red: 0.13, green: 0.13, blue: 0.15, alpha: 1)
+        }
+    }
+
+    /// Spots and rings — pitched well clear of the body either way, since these
+    /// identify three of the six sides.
+    static func marking(_ appearance: Appearance) -> UIColor {
+        switch appearance {
+        case .light: return UIColor(red: 0.42, green: 0.39, blue: 0.37, alpha: 1)
+        case .dark:  return UIColor(red: 0.62, green: 0.62, blue: 0.66, alpha: 1)
+        }
+    }
+
+    /// Nose, inner ear and paw pads. Pink on both coats, a touch deeper on the
+    /// black cat so it doesn't glare.
+    static func nose(_ appearance: Appearance) -> UIColor {
+        switch appearance {
+        case .light: return UIColor(red: 0.95, green: 0.72, blue: 0.73, alpha: 1)
+        case .dark:  return UIColor(red: 0.82, green: 0.56, blue: 0.60, alpha: 1)
+        }
+    }
+
+    /// Eyes: near-black on the cream cat, bright blue on the black one.
+    static func eye(_ appearance: Appearance) -> UIColor {
+        switch appearance {
+        case .light: return UIColor(red: 0.20, green: 0.19, blue: 0.22, alpha: 1)
+        case .dark:  return UIColor(red: 0.35, green: 0.68, blue: 0.95, alpha: 1)
+        }
+    }
+
 }

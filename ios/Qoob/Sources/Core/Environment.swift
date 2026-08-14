@@ -41,32 +41,44 @@ enum Environment: String, CaseIterable {
     }
 
     /// Floor-tile colour (used when no carpet/floor texture is supplied).
-    var floorColor: UIColor {
-        switch self {
-        case .livingRoom: return UIColor(red: 0.20, green: 0.19, blue: 0.24, alpha: 1)
-        case .kitchen:    return UIColor(red: 0.78, green: 0.79, blue: 0.82, alpha: 1)
-        case .bedroom:    return UIColor(red: 0.30, green: 0.24, blue: 0.33, alpha: 1)
-        case .yard:       return UIColor(red: 0.34, green: 0.52, blue: 0.30, alpha: 1)
+    func floorColor(_ appearance: Appearance) -> UIColor {
+        switch (self, appearance) {
+        case (.livingRoom, .dark):  return UIColor(red: 0.20, green: 0.19, blue: 0.24, alpha: 1)
+        case (.livingRoom, .light): return UIColor(red: 0.80, green: 0.76, blue: 0.72, alpha: 1)
+        case (.kitchen, .dark):     return UIColor(red: 0.44, green: 0.45, blue: 0.48, alpha: 1)
+        case (.kitchen, .light):    return UIColor(red: 0.86, green: 0.85, blue: 0.82, alpha: 1)
+        case (.bedroom, .dark):     return UIColor(red: 0.30, green: 0.24, blue: 0.33, alpha: 1)
+        case (.bedroom, .light):    return UIColor(red: 0.85, green: 0.78, blue: 0.82, alpha: 1)
+        case (.yard, .dark):        return UIColor(red: 0.24, green: 0.36, blue: 0.22, alpha: 1)
+        case (.yard, .light):       return UIColor(red: 0.52, green: 0.68, blue: 0.42, alpha: 1)
         }
     }
 
     /// Surrounding ground colour (the plane beyond the play tiles).
-    var groundColor: UIColor {
-        switch self {
-        case .livingRoom: return UIColor(red: 0.12, green: 0.11, blue: 0.16, alpha: 1)
-        case .kitchen:    return UIColor(red: 0.55, green: 0.56, blue: 0.60, alpha: 1)
-        case .bedroom:    return UIColor(red: 0.16, green: 0.13, blue: 0.19, alpha: 1)
-        case .yard:       return UIColor(red: 0.26, green: 0.44, blue: 0.24, alpha: 1)
+    func groundColor(_ appearance: Appearance) -> UIColor {
+        switch (self, appearance) {
+        case (.livingRoom, .dark):  return UIColor(red: 0.12, green: 0.11, blue: 0.16, alpha: 1)
+        case (.livingRoom, .light): return UIColor(red: 0.72, green: 0.68, blue: 0.64, alpha: 1)
+        case (.kitchen, .dark):     return UIColor(red: 0.30, green: 0.31, blue: 0.34, alpha: 1)
+        case (.kitchen, .light):    return UIColor(red: 0.76, green: 0.75, blue: 0.72, alpha: 1)
+        case (.bedroom, .dark):     return UIColor(red: 0.16, green: 0.13, blue: 0.19, alpha: 1)
+        case (.bedroom, .light):    return UIColor(red: 0.78, green: 0.71, blue: 0.75, alpha: 1)
+        case (.yard, .dark):        return UIColor(red: 0.20, green: 0.32, blue: 0.19, alpha: 1)
+        case (.yard, .light):       return UIColor(red: 0.44, green: 0.60, blue: 0.36, alpha: 1)
         }
     }
 
     /// Backdrop / clear colour behind the scene.
-    var background: UIColor {
-        switch self {
-        case .livingRoom: return UIColor(red: 0.07, green: 0.08, blue: 0.12, alpha: 1)
-        case .kitchen:    return UIColor(red: 0.14, green: 0.15, blue: 0.17, alpha: 1)
-        case .bedroom:    return UIColor(red: 0.08, green: 0.07, blue: 0.11, alpha: 1)
-        case .yard:       return UIColor(red: 0.30, green: 0.44, blue: 0.54, alpha: 1) // sky
+    func background(_ appearance: Appearance) -> UIColor {
+        switch (self, appearance) {
+        case (.livingRoom, .dark):  return UIColor(red: 0.07, green: 0.08, blue: 0.12, alpha: 1)
+        case (.livingRoom, .light): return UIColor(red: 0.89, green: 0.87, blue: 0.84, alpha: 1)
+        case (.kitchen, .dark):     return UIColor(red: 0.14, green: 0.15, blue: 0.17, alpha: 1)
+        case (.kitchen, .light):    return UIColor(red: 0.92, green: 0.92, blue: 0.90, alpha: 1)
+        case (.bedroom, .dark):     return UIColor(red: 0.08, green: 0.07, blue: 0.11, alpha: 1)
+        case (.bedroom, .light):    return UIColor(red: 0.90, green: 0.86, blue: 0.89, alpha: 1)
+        case (.yard, .dark):        return UIColor(red: 0.18, green: 0.28, blue: 0.36, alpha: 1)
+        case (.yard, .light):       return UIColor(red: 0.62, green: 0.79, blue: 0.90, alpha: 1) // sky
         }
     }
 

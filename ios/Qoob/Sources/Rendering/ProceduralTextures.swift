@@ -75,16 +75,21 @@ enum ProceduralTextures {
     /// reads as its own place. This is what `.default` resolves to: previously
     /// it looked for `floor_<room>` / `carpet_albedo` assets that don't exist
     /// and fell through to a flat colour, which made every room a grey void.
-    static func roomFloor(for environment: Environment) -> UIImage {
+    ///
+    /// Each room has a light and a dark form. The cache is keyed on both, so
+    /// switching appearance doesn't hand back the other one's texture.
+    static func roomFloor(for environment: Environment, _ appearance: Appearance) -> UIImage {
+        let key = "room.\(environment.rawValue).\(appearance)"
         switch environment {
-        case .livingRoom: return cached("room.livingRoom", plushRug)
-        case .kitchen:    return cached("room.kitchen", kitchenTile)
-        case .bedroom:    return cached("room.bedroom", bedroomCarpet)
-        case .yard:       return cached("room.yard", lawn)
+        case .livingRoom: return cached(key) { plushRug(appearance) }
+        case .kitchen:    return cached(key) { kitchenTile(appearance) }
+        case .bedroom:    return cached(key) { bedroomCarpet(appearance) }
+        case .yard:       return cached(key) { lawn(appearance) }
         }
     }
 
     /// Matching normal map, so the room floors catch the light with some relief.
+    /// Relief doesn't depend on the appearance, so these aren't keyed by it.
     static func roomFloorNormal(for environment: Environment) -> UIImage? {
         switch environment {
         case .kitchen: return cached("roomN.kitchen", kitchenTileNormal)
@@ -93,6 +98,11 @@ enum ProceduralTextures {
         // top of fine speckle just reads as noise at this camera distance.
         case .livingRoom, .bedroom: return nil
         }
+    }
+
+    /// Picks between a light-mode and a dark-mode value.
+    private static func pick<T>(_ appearance: Appearance, light: T, dark: T) -> T {
+        appearance == .light ? light : dark
     }
 
     /// The two alternating colours for the checkerboard floor.
@@ -179,10 +189,12 @@ enum ProceduralTextures {
 
     /// Living room: a deep wool rug — warm dark base, dense speckle, plus a
     /// faint woven cross-hatch so it reads as pile rather than noise.
-    private static func plushRug() -> UIImage {
+    private static func plushRug(_ appearance: Appearance) -> UIImage {
         renderer().image { rctx in
             let ctx = rctx.cgContext
-            ctx.setFillColor(UIColor(red: 0.17, green: 0.15, blue: 0.21, alpha: 1).cgColor)
+            ctx.setFillColor(pick(appearance,
+                                  light: UIColor(red: 0.76, green: 0.71, blue: 0.67, alpha: 1),
+                                  dark: UIColor(red: 0.17, green: 0.15, blue: 0.21, alpha: 1)).cgColor)
             ctx.fill(fullRect)
 
             var rng = SeededGenerator(seed: 0x5A6E_1D0)
@@ -208,10 +220,12 @@ enum ProceduralTextures {
     /// Kitchen: pale ceramic tile. One tile per texture repeat, with grout on the
     /// top and left edges so tiling produces a continuous grid, plus a soft
     /// mottle in the glaze.
-    private static func kitchenTile() -> UIImage {
+    private static func kitchenTile(_ appearance: Appearance) -> UIImage {
         renderer().image { rctx in
             let ctx = rctx.cgContext
-            ctx.setFillColor(UIColor(red: 0.84, green: 0.83, blue: 0.79, alpha: 1).cgColor)
+            ctx.setFillColor(pick(appearance,
+                                  light: UIColor(red: 0.88, green: 0.87, blue: 0.84, alpha: 1),
+                                  dark: UIColor(red: 0.46, green: 0.46, blue: 0.49, alpha: 1)).cgColor)
             ctx.fill(fullRect)
 
             var rng = SeededGenerator(seed: 0x71_1E00)
@@ -226,7 +240,10 @@ enum ProceduralTextures {
             }
             speckle(ctx, &rng, count: 900, radius: 0.9, maxAlpha: 0.05)
 
-            grout(ctx, width: 7, color: UIColor(red: 0.62, green: 0.61, blue: 0.58, alpha: 1))
+            grout(ctx, width: 7,
+                  color: pick(appearance,
+                              light: UIColor(red: 0.68, green: 0.66, blue: 0.63, alpha: 1),
+                              dark: UIColor(red: 0.30, green: 0.30, blue: 0.33, alpha: 1)))
         }
     }
 
@@ -247,10 +264,12 @@ enum ProceduralTextures {
 
     /// Bedroom: a soft, warm carpet — lighter and pinker than the living room,
     /// with longer pile strands.
-    private static func bedroomCarpet() -> UIImage {
+    private static func bedroomCarpet(_ appearance: Appearance) -> UIImage {
         renderer().image { rctx in
             let ctx = rctx.cgContext
-            ctx.setFillColor(UIColor(red: 0.25, green: 0.19, blue: 0.26, alpha: 1).cgColor)
+            ctx.setFillColor(pick(appearance,
+                                  light: UIColor(red: 0.81, green: 0.74, blue: 0.79, alpha: 1),
+                                  dark: UIColor(red: 0.25, green: 0.19, blue: 0.26, alpha: 1)).cgColor)
             ctx.fill(fullRect)
 
             var rng = SeededGenerator(seed: 0xBED_0C42)
@@ -274,10 +293,12 @@ enum ProceduralTextures {
 
     /// Yard: mown lawn — layered greens with fine blade strokes in two
     /// directions, so it reads as grass from directly above.
-    private static func lawn() -> UIImage {
-        renderer().image { rctx in
+    private static func lawn(_ appearance: Appearance) -> UIImage {
+        let lift: CGFloat = pick(appearance, light: 0.16, dark: 0)
+        return renderer().image { rctx in
             let ctx = rctx.cgContext
-            ctx.setFillColor(UIColor(red: 0.29, green: 0.45, blue: 0.24, alpha: 1).cgColor)
+            ctx.setFillColor(UIColor(red: 0.29 + lift, green: 0.45 + lift,
+                                     blue: 0.24 + lift, alpha: 1).cgColor)
             ctx.fill(fullRect)
 
             var rng = SeededGenerator(seed: 0x1A_4E00)
@@ -287,9 +308,9 @@ enum ProceduralTextures {
                 let y = CGFloat(rng.next() % UInt64(px))
                 let r = 10 + CGFloat(rng.next() % 30)
                 let lighter = rng.next() % 2 == 0
-                ctx.setFillColor(UIColor(red: lighter ? 0.42 : 0.20,
-                                         green: lighter ? 0.58 : 0.36,
-                                         blue: lighter ? 0.30 : 0.18,
+                ctx.setFillColor(UIColor(red: (lighter ? 0.42 : 0.20) + lift,
+                                         green: (lighter ? 0.58 : 0.36) + lift,
+                                         blue: (lighter ? 0.30 : 0.18) + lift,
                                          alpha: 0.20).cgColor)
                 ctx.fillEllipse(in: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r))
             }
@@ -300,9 +321,9 @@ enum ProceduralTextures {
                 let len = 3 + CGFloat(rng.next() % 6)
                 let lean = (CGFloat(rng.next() % 100) / 100.0 - 0.5) * 3
                 let lighter = rng.next() % 3 != 0
-                ctx.setStrokeColor(UIColor(red: lighter ? 0.46 : 0.19,
-                                           green: lighter ? 0.62 : 0.33,
-                                           blue: lighter ? 0.30 : 0.16,
+                ctx.setStrokeColor(UIColor(red: (lighter ? 0.46 : 0.19) + lift,
+                                           green: (lighter ? 0.62 : 0.33) + lift,
+                                           blue: (lighter ? 0.30 : 0.16) + lift,
                                            alpha: 0.55).cgColor)
                 ctx.setLineWidth(1)
                 ctx.move(to: CGPoint(x: x, y: y))

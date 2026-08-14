@@ -105,9 +105,6 @@ struct ContentView: View {
             }
         }
         .statusBarHidden(true)
-        // The game is dark-themed; lock the scheme so the window/nav-bar chrome
-        // never shows a light (white) border around the full-bleed board.
-        .preferredColorScheme(.dark)
         .sheet(isPresented: $viewModel.showSettings) {
             SettingsView(viewModel: viewModel)
         }
@@ -158,10 +155,10 @@ struct ContentView: View {
                     Text("\(viewModel.score)")
                         .font(.system(size: 16, weight: .bold))
                         .monospacedDigit()
-                        .foregroundColor(.white)
+                        .foregroundStyle(.primary)
                     Image(systemName: viewModel.showScoreBreakdown ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.white.opacity(0.6))
+                        .foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
@@ -203,12 +200,12 @@ struct ContentView: View {
         HStack(spacing: 16) {
             Text(label)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.75))
+                .foregroundStyle(.secondary)
             Spacer(minLength: 12)
             Text("\(value)")
                 .font(.system(size: 13, weight: .semibold))
                 .monospacedDigit()
-                .foregroundColor(.white)
+                .foregroundStyle(.primary)
         }
         .frame(minWidth: 150, alignment: .leading)
     }
@@ -223,7 +220,7 @@ struct ContentView: View {
                     .foregroundColor(Color(red: 0.86, green: 0.30, blue: 0.42))
                 Text("\(viewModel.itemsRemaining) toy\(viewModel.itemsRemaining == 1 ? "" : "s") to push (+150)")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white)
+                    .foregroundStyle(.primary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -301,7 +298,7 @@ struct ContentView: View {
         Button(action: { viewModel.roll(direction) }) {
             Image(systemName: icon)
                 .font(.system(size: 22, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundStyle(.primary)
                 .frame(width: 56, height: 56)
         }
         // Neutral (untinted) Liquid Glass — no accent colour.
@@ -314,7 +311,7 @@ struct ContentView: View {
         Text(viewModel.mantra)
             .font(.system(size: 30, weight: .light, design: .serif))
             .italic()
-            .foregroundColor(.white)
+            .foregroundStyle(.primary)
             .opacity(viewModel.showMantra ? 0.95 : 0)
             .shadow(color: .black.opacity(0.5), radius: 8)
     }
@@ -339,16 +336,16 @@ struct ContentView: View {
                 Text(viewModel.environmentName.uppercased())
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(2)
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundStyle(.tertiary)
             }
             Text(title)
                 .font(.system(size: 40, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
+                .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
 
             Text(subtitle)
                 .font(.system(size: 17, weight: .regular, design: .rounded))
-                .foregroundColor(.white.opacity(0.8))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             if viewModel.motionUnavailable {
@@ -361,10 +358,10 @@ struct ContentView: View {
             Button(action: { viewModel.startTapped() }) {
                 Text(button)
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundColor(.black)
+                    .foregroundStyle(Color(uiColor: .systemBackground))
                     .padding(.horizontal, 40)
                     .padding(.vertical, 14)
-                    .background(Capsule().fill(Color.white))
+                    .background(Capsule().fill(Color.primary))
             }
         }
         .padding(36)

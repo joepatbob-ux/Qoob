@@ -8,7 +8,7 @@
 //  them up — no code change needed.
 //
 //  Expected image names:
-//    fur_albedo, fur_normal        — Qoob's coat
+//    fur_albedo                    — Qoob's coat
 //    carpet_albedo, carpet_normal  — floor
 //
 //  There is no per-symbol face art any more: Qoob's sides are sculpted as the
@@ -23,7 +23,6 @@ enum BundledTextures {
     static func image(_ name: String) -> UIImage? { UIImage(named: name) }
 
     static var fur: UIImage?         { image("fur_albedo") }
-    static var furNormal: UIImage?   { image("fur_normal") }
     static var carpet: UIImage?      { image("carpet_albedo") }
     static var carpetNormal: UIImage? { image("carpet_normal") }
 }
