@@ -53,28 +53,30 @@ struct WindConfig {
 /// centre, distributed so the squash always reads as world-*vertical* no matter
 /// which face is up. Amounts are fractions of the cube size.
 struct QoobSoftBodyConfig {
-    // Idle "breathing" — a slow, barely-there swell so Qoob reads as alive.
-    var breatheAmplitude: Double = 0.025   // ±2.5% height
-    var breathePeriod: Double = 3.4        // seconds per full breath
+    // Idle "breathing" — a slow swell so Qoob reads as a living, squeezable thing
+    // rather than a prop sitting still.
+    var breatheAmplitude: Double = 0.05    // ±5% height
+    var breathePeriod: Double = 3.0        // seconds per full breath
 
     // Anticipation — a quick gather right as a roll begins (reads as a crouch).
-    var anticipationDuration: Double = 0.045
-    var anticipationCrouch: Double = 0.035 // squash down before tipping
+    var anticipationDuration: Double = 0.05
+    var anticipationCrouch: Double = 0.07  // squash down before tipping
 
-    // Landing — the squash when a face slaps the ground.
-    var landDuration: Double = 0.06
-    var squashAmount: Double = 0.09        // ← main "squash amount" knob
+    // Landing — the squash when he flops onto a new side.
+    var landDuration: Double = 0.07
+    var squashAmount: Double = 0.19        // ← main "squash amount" knob
 
-    // Rebound — a small overshoot back the other way.
-    var reboundDuration: Double = 0.09
-    var reboundAmount: Double = 0.05       // ← main "rebound amount" knob
+    // Rebound — the overshoot back the other way, the plush bounce.
+    var reboundDuration: Double = 0.11
+    var reboundAmount: Double = 0.11       // ← main "rebound amount" knob
 
-    // Settle — ease back to a perfect cube.
-    var settleDuration: Double = 0.13
+    // Settle — ease back to rest.
+    var settleDuration: Double = 0.16
 
-    /// Safety clamp: deformation never exceeds this, so the player can always
-    /// read which face is up (keeps it a cube, not jelly).
-    var maxDeformation: Double = 0.14
+    /// Safety clamp: deformation never exceeds this. It has to stay above
+    /// `squashAmount` and `reboundAmount` or it silently flattens them both —
+    /// raising either without raising this does nothing.
+    var maxDeformation: Double = 0.28
 }
 
 // MARK: - Fur (silhouette tufts on Qoob)

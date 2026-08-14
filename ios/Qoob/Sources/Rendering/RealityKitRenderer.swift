@@ -423,13 +423,31 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         art.addChild(body)
     }
 
-    /// How soft Qoob's corners are. Also bounds how far off-centre a sculpted
-    /// feature can sit before the surface has curved away beneath it.
-    private var bodyCornerRadius: Float { cubeSize * 0.24 }
+    /// How soft Qoob's corners are, as a fraction of his size. At 0.5 he'd be a
+    /// sphere; this is round enough to read as a squishy loaf while the middles of
+    /// his sides stay broad enough to carry ears, paws and markings.
+    private var bodyCornerRadius: Float { cubeSize * 0.34 }
 
-    /// The half-width of the flat area in the middle of a side. Features placed
-    /// beyond this start to float off the rounded corner.
+    /// The half-width of the flat area in the middle of a side.
     private var flatHalfExtent: Float { cubeSize / 2 - bodyCornerRadius }
+
+    /// How far out of a side the body's surface sits at a given offset across it.
+    ///
+    /// Features can't just be parked at a fixed depth: past `flatHalfExtent` the
+    /// rounded corner falls away, and the rounder Qoob gets the more it falls. This
+    /// returns the exact surface of the rounded box, so an ear or a paw pad seated
+    /// with it stays planted however far off-centre it sits.
+    private func surfaceDepth(x: Float, y: Float) -> Float {
+        let h = cubeSize / 2
+        let r = bodyCornerRadius
+        let flat = h - r
+        // Distance into the rounded region along each axis.
+        let ax = max(0, abs(x) - flat)
+        let ay = max(0, abs(y) - flat)
+        let remaining = r * r - ax * ax - ay * ay
+        guard remaining > 0 else { return flat }
+        return flat + sqrt(remaining)
+    }
 
     // MARK: - Cat features
     //
@@ -456,11 +474,12 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         for face in Face.allCases {
             let symbol = CatSymbol.from(colors[face] ?? 0)
 
-            // A frame at the side's centre, with local +Z pointing out of it and
-            // local +Y as "up" across it, so relief can be built in 2D-ish terms.
-            let (position, orientation) = faceFrame(face, offset: cubeSize / 2)
+            // A frame at the body's *centre*, oriented so local +Z points out of
+            // this side and local +Y is "up" across it. Features then give an (x, y)
+            // across the side and `seat` finds the depth, so nothing floats off the
+            // curve however round Qoob gets.
+            let (_, orientation) = faceFrame(face, offset: 0)
             let panel = Entity()
-            panel.position = position
             panel.orientation = orientation
 
             switch symbol {
@@ -483,7 +502,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // his outline the way the old decal planes did.
 
     private func sculptSpot(on panel: Entity, mark: PhysicallyBasedMaterial) {
-        panel.addChild(markingPatch(radius: 0.17, at: f3(0, 0, 0), mark: mark))
+        panel.addChild(markingPatch(radius: 0.16, x: 0, y: 0, mark: mark))
     }
 
     private func sculptRing(on panel: Entity, mark: PhysicallyBasedMaterial) {
@@ -491,27 +510,39 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // ring of dabs reads more like a natural coat marking anyway.
         let dabs = 14
         for i in 0..<dabs {
-            let angle = Double(i) / Double(dabs) * 2 * .pi
-            panel.addChild(markingPatch(radius: 0.045,
-                                        at: f3(cos(angle) * 0.17, sin(angle) * 0.17, 0),
+            let angle = Float(i) / Float(dabs) * 2 * .pi
+            panel.addChild(markingPatch(radius: 0.042,
+                                        x: cos(angle) * 0.16, y: sin(angle) * 0.16,
                                         mark: mark))
         }
     }
 
     private func sculptThreeSpots(on panel: Entity, mark: PhysicallyBasedMaterial) {
-        for (dx, dy) in [(0.0, 0.17), (-0.17, -0.13), (0.17, -0.13)] {
-            panel.addChild(markingPatch(radius: 0.085, at: f3(dx, dy, 0), mark: mark))
+        for (dx, dy) in [(Float(0), Float(0.16)), (-0.16, -0.12), (0.16, -0.12)] {
+            panel.addChild(markingPatch(radius: 0.08, x: dx, y: dy, mark: mark))
         }
     }
 
-    /// A single marking: a sphere squashed almost flat, sitting just proud of the
-    /// surface so it paints on rather than protruding.
-    private func markingPatch(radius: Float, at position: SIMD3<Float>,
+    /// A single marking: a sphere squashed almost flat and seated on the surface, so
+    /// it paints onto the coat rather than protruding from it.
+    private func markingPatch(radius: Float, x: Float, y: Float,
                               mark: PhysicallyBasedMaterial) -> ModelEntity {
         let patch = ModelEntity(mesh: .generateSphere(radius: radius), materials: [mark])
-        patch.position = position + f3(0, 0, 0.005)
+        seat(patch, x: x, y: y)
         patch.scale = f3(1, 1, 0.10)
         return patch
+    }
+
+    /// Places an entity with its *centre* on the body's surface, at an offset across
+    /// the current side — so it sits half-embedded and half-proud, which is what a
+    /// feature growing out of the body looks like. `proud` lifts it further out.
+    ///
+    /// Note there is deliberately no "sink" here. Pushing features inward by their
+    /// own radius buried them completely once the body got properly round: at this
+    /// corner radius the surface is 0.5 out at the middle of a side, so a flattened
+    /// patch sunk by its radius ends up entirely inside the coat.
+    private func seat(_ entity: Entity, x: Float, y: Float, proud: Float = 0) {
+        entity.position = f3(Double(x), Double(y), Double(surfaceDepth(x: x, y: y) + proud))
     }
 
     /// The head: two ears at the top corners and a muzzle over the drawn nose.
@@ -533,17 +564,16 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             inner.position = f3(0, 0.01, 0.07)
             ear.addChild(inner)
 
-            // Up at the top of the head, splayed outward and leaning out. Kept
-            // inside the flat area so the base doesn't float off the soft corner.
-            let out = Double(flatHalfExtent) * 0.85
-            ear.position = f3(Double(side) * out, Double(flatHalfExtent) * 0.8, 0.02)
+            // Up at the top of the head, splayed outward and leaning out. Seated on
+            // the surface, so they stay planted on the rounded shoulder.
+            seat(ear, x: side * 0.26, y: 0.27, proud: 0.02)
             ear.orientation = quat(side * -0.34, f3(0, 0, 1)) * quat(0.30, f3(1, 0, 0))
             panel.addChild(ear)
         }
 
         // Muzzle, low on the face where a snout sits.
         let muzzle = ModelEntity(mesh: .generateSphere(radius: 0.12), materials: [pink])
-        muzzle.position = f3(0, -0.09, 0.02)
+        seat(muzzle, x: 0, y: -0.10)
         muzzle.scale = f3(1.5, 0.85, 0.5)
         panel.addChild(muzzle)
 
@@ -552,7 +582,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         for side in [Float(-1), 1] {
             let eye = ModelEntity(mesh: .generateSphere(radius: 0.055),
                                   materials: [pbr(catEye, roughness: 0.35)])
-            eye.position = f3(Double(side) * 0.13, 0.06, 0.025)
+            seat(eye, x: side * 0.14, y: 0.07)
             eye.scale = f3(1, 1.15, 0.35)
             panel.addChild(eye)
         }
@@ -573,34 +603,33 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             let t = Float(i) / Float(segments - 1)
             let segment = ModelEntity(mesh: .generateSphere(radius: 0.062 * (1 - 0.5 * t)),
                                       materials: [fur])
-            // A hooked curl: out and up, then back over itself, staying near the
-            // face plane so the whole length shows from directly above.
-            let angle = Double(t) * 2.4
-            let reach = Double(0.16 + 0.18 * Double(t))
-            segment.position = f3(sin(angle) * reach * 0.9,
-                                  0.10 + (1 - cos(angle)) * reach * 0.75,
-                                  Double(0.045 + 0.02 * t))
+            // A hooked curl: out and up, then back over itself. It starts on the
+            // surface and lifts away from there, so the base is planted.
+            let angle = Float(t) * 2.4
+            let x = sin(angle) * (0.16 + 0.18 * t) * 0.9
+            let y = 0.10 + (1 - cos(angle)) * (0.16 + 0.18 * t) * 0.75
+            seat(segment, x: x, y: y, proud: 0.05 * t)
             panel.addChild(segment)
         }
 
         let pucker = ModelEntity(mesh: .generateSphere(radius: 0.05), materials: [pink])
-        pucker.position = f3(0, -0.04, 0.045)
+        seat(pucker, x: 0, y: -0.05)
         pucker.scale = f3(1, 1, 0.5)
         panel.addChild(pucker)
     }
 
-    /// Four paw pads, so landing this face up genuinely reads as paws in the air.
+    /// Four paw pads, so landing this side up genuinely reads as paws in the air.
     private func sculptPaws(on panel: Entity, pink: PhysicallyBasedMaterial) {
-        for (dx, dy) in [(-0.20, -0.16), (0.20, -0.16), (-0.20, 0.22), (0.20, 0.22)] {
+        for (dx, dy) in [(Float(-0.18), Float(-0.15)), (0.18, -0.15), (-0.18, 0.21), (0.18, 0.21)] {
             let pad = ModelEntity(mesh: .generateSphere(radius: 0.10), materials: [pink])
-            pad.position = f3(dx, dy, 0.02)
+            seat(pad, x: dx, y: dy)
             pad.scale = f3(1, 1, 0.45)
             panel.addChild(pad)
 
             // Toe beans.
-            for tx in [-0.09, 0.0, 0.09] {
+            for tx in [Float(-0.085), 0.0, 0.085] {
                 let toe = ModelEntity(mesh: .generateSphere(radius: 0.037), materials: [pink])
-                toe.position = f3(dx + tx, dy + (tx == 0 ? 0.15 : 0.125), 0.02)
+                seat(toe, x: dx + tx, y: dy + (tx == 0 ? 0.145 : 0.12))
                 toe.scale = f3(1, 1, 0.45)
                 panel.addChild(toe)
             }
