@@ -370,9 +370,13 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         f3(Double(col), Double(cubeSize) / 2.0, Double(row))
     }
 
-    /// The cube: a container entity (this is what rolls / gets positioned &
-    /// baked) holding an `art` child (breathing wobble applied here so it never
-    /// disturbs the roll transform the game logic reads from the container).
+    /// Qoob: a container entity (this is what rolls / gets positioned & baked)
+    /// holding an `art` child (deformation applied there so it never disturbs the
+    /// roll transform the game logic reads from the container).
+    ///
+    /// He *moves* like a cube — one cell per roll, pivoting on a bottom edge — but
+    /// he isn't drawn as one. The body is a soft plush loaf, and each side carries
+    /// the sculpted body part its symbol depicts.
     private func makeCubeNode(colors: [Face: Int]) -> Entity {
         let container = Entity()
         container.name = "cube"
@@ -382,13 +386,13 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         container.addChild(art)
         cubeArt = art
 
-        if let model = loadCubeModel() {
-            // A supplied rounded-cube mesh (plain grey). Overlay the six colour-
-            // coded symbol tiles as decals so faces stay readable.
+        // A loose `cube_cat.*` file is treated as a deliberate override; the
+        // placeholder Data Set in the asset catalogue is not used, since it's a
+        // single-material rounded box that the sculpted loaf below supersedes.
+        if let model = loadOverrideModel() {
             art.addChild(model)
-            addFaceDecals(colors: colors, on: art, colored: true, faceScale: 0.70)
         } else {
-            buildProceduralCube(colors: colors, on: art)
+            buildCatBody(on: art)
         }
 
         addCatFeatures(colors: colors, on: art)
@@ -398,7 +402,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
         // Living shimmer: slowly drift the fur's UVs so highlights play across
         // the strands. A "moving texture" — cheap (UV scroll, no Metal) and
-        // simulator-safe. Applies only to the fur (PBR) meshes, not the decals.
+        // simulator-safe.
         forEachModel(art) { model in
             if model.model?.materials.first is PhysicallyBasedMaterial {
                 self.addTextureScroll(model, velocity: SIMD2<Float>(0.015, 0.0))
@@ -407,20 +411,39 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         return container
     }
 
+    /// Qoob's body: a heavily-rounded box, so he reads as a soft plush loaf rather
+    /// than a die while still filling the unit cell the roll geometry assumes.
+    ///
+    /// The proportions stay cubic on purpose. He pivots about a bottom edge at
+    /// y = -0.5, so a body that wasn't square in profile would swing about a point
+    /// off its own surface and look like it was hinged on thin air.
+    private func buildCatBody(on art: Entity) {
+        let mesh = MeshResource.generateBox(size: cubeSize, cornerRadius: bodyCornerRadius)
+        let body = ModelEntity(mesh: mesh, materials: [furMaterial()])
+        art.addChild(body)
+    }
+
+    /// How soft Qoob's corners are. Also bounds how far off-centre a sculpted
+    /// feature can sit before the surface has curved away beneath it.
+    private var bodyCornerRadius: Float { cubeSize * 0.24 }
+
+    /// The half-width of the flat area in the middle of a side. Features placed
+    /// beyond this start to float off the rounded corner.
+    private var flatHalfExtent: Float { cubeSize / 2 - bodyCornerRadius }
+
     // MARK: - Cat features
     //
-    // The bundled `cube_cat.usdz` is a single mesh with one flat material, so
-    // none of the cat is in the asset — it's sculpted here instead.
+    // There are no decals any more. Every side used to carry a flat colour-coded
+    // glyph plane, which read as stickers pasted onto a box — and edge-on they
+    // showed as bright coloured bars along the silhouette. Each side is instead
+    // *sculpted* as the thing its symbol depicts: his head, his rear and tail, his
+    // paws, and coat markings on the spine and flanks. Qoob's own anatomy is now
+    // the readout, so the player still identifies which side is which.
     //
-    // Qoob is a genuine cube-cat: every face is sculpted as the body part its
-    // symbol depicts, so whichever face lands up is what you see from above —
-    // his face, his backside with the tail, four paws in the air, or a smooth
-    // flank. Features are welded to the art node, so they roll with him and get
-    // squashed by the soft-body effect along with the rest of him.
-    //
-    // Placement is driven by the symbol map rather than hard-coded to `.front`,
-    // so the sculpt always agrees with the decals however `Level.startingFaces`
-    // assigns them.
+    // Features are welded to the art node, so they roll with him and get squashed
+    // by the soft-body effect along with the rest of him. Placement is driven by
+    // the symbol map rather than hard-coded, so the sculpt always agrees with
+    // however `Level.startingFaces` assigns them.
 
     private func addCatFeatures(colors: [Face: Int], on art: Entity) {
         // Features are tinted a shade deeper than the body. Sculpted in the body's
@@ -428,14 +451,14 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // noise; a little tonal contrast makes them legible as form.
         let fur = furMaterial(tint: catMarking)
         let pink = pbr(catPink, roughness: 0.78)
+        let mark = pbr(catSpot, roughness: 0.9)
 
         for face in Face.allCases {
             let symbol = CatSymbol.from(colors[face] ?? 0)
 
-            // Reuse the decal frame: at the face centre, with local +Z pointing
-            // out of the face and local +Y as the glyph's "up". Relief is then
-            // built in comfortable 2D-ish terms.
-            let (position, orientation) = decalPlacement(face, offset: cubeSize / 2)
+            // A frame at the side's centre, with local +Z pointing out of it and
+            // local +Y as "up" across it, so relief can be built in 2D-ish terms.
+            let (position, orientation) = faceFrame(face, offset: cubeSize / 2)
             let panel = Entity()
             panel.position = position
             panel.orientation = orientation
@@ -444,11 +467,51 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             case .face:     sculptFace(on: panel, fur: fur, pink: pink)
             case .butt:     sculptRump(on: panel, body: furMaterial(), fur: fur, pink: pink)
             case .paws:     sculptPaws(on: panel, pink: pink)
-            case .dot, .ring, .triangle:
-                break       // flanks stay smooth, so the die still reads as a die
+            case .dot:      sculptSpot(on: panel, mark: mark)
+            case .ring:     sculptRing(on: panel, mark: mark)
+            case .triangle: sculptThreeSpots(on: panel, mark: mark)
             }
             art.addChild(panel)
         }
+    }
+
+    // MARK: Coat markings
+    //
+    // The three abstract symbols become markings in Qoob's coat — a spot, a ring
+    // and three spots — rather than glyphs stuck on him. They're shallow patches
+    // that hug the surface, so they read as fur colour from above and don't break
+    // his outline the way the old decal planes did.
+
+    private func sculptSpot(on panel: Entity, mark: PhysicallyBasedMaterial) {
+        panel.addChild(markingPatch(radius: 0.17, at: f3(0, 0, 0), mark: mark))
+    }
+
+    private func sculptRing(on panel: Entity, mark: PhysicallyBasedMaterial) {
+        // Built from a circle of small patches: there's no torus primitive, and a
+        // ring of dabs reads more like a natural coat marking anyway.
+        let dabs = 14
+        for i in 0..<dabs {
+            let angle = Double(i) / Double(dabs) * 2 * .pi
+            panel.addChild(markingPatch(radius: 0.045,
+                                        at: f3(cos(angle) * 0.17, sin(angle) * 0.17, 0),
+                                        mark: mark))
+        }
+    }
+
+    private func sculptThreeSpots(on panel: Entity, mark: PhysicallyBasedMaterial) {
+        for (dx, dy) in [(0.0, 0.17), (-0.17, -0.13), (0.17, -0.13)] {
+            panel.addChild(markingPatch(radius: 0.085, at: f3(dx, dy, 0), mark: mark))
+        }
+    }
+
+    /// A single marking: a sphere squashed almost flat, sitting just proud of the
+    /// surface so it paints on rather than protruding.
+    private func markingPatch(radius: Float, at position: SIMD3<Float>,
+                              mark: PhysicallyBasedMaterial) -> ModelEntity {
+        let patch = ModelEntity(mesh: .generateSphere(radius: radius), materials: [mark])
+        patch.position = position + f3(0, 0, 0.005)
+        patch.scale = f3(1, 1, 0.10)
+        return patch
     }
 
     /// The head: two ears at the top corners and a muzzle over the drawn nose.
@@ -470,25 +533,36 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             inner.position = f3(0, 0.01, 0.07)
             ear.addChild(inner)
 
-            // Top corners of the face, splayed outward and leaning out of it.
-            ear.position = f3(Double(side) * 0.29, 0.27, 0.03)
+            // Up at the top of the head, splayed outward and leaning out. Kept
+            // inside the flat area so the base doesn't float off the soft corner.
+            let out = Double(flatHalfExtent) * 0.85
+            ear.position = f3(Double(side) * out, Double(flatHalfExtent) * 0.8, 0.02)
             ear.orientation = quat(side * -0.34, f3(0, 0, 1)) * quat(0.30, f3(1, 0, 0))
             panel.addChild(ear)
         }
 
-        // Muzzle: a flattened dome sitting over the glyph's nose.
-        let muzzle = ModelEntity(mesh: .generateSphere(radius: 0.11), materials: [pink])
-        muzzle.position = f3(0, -0.10, 0.03)
+        // Muzzle, low on the face where a snout sits.
+        let muzzle = ModelEntity(mesh: .generateSphere(radius: 0.12), materials: [pink])
+        muzzle.position = f3(0, -0.09, 0.02)
         muzzle.scale = f3(1.5, 0.85, 0.5)
         panel.addChild(muzzle)
+
+        // Eyes: shallow dark patches, the only thing left standing in for the old
+        // drawn face. Without them the head reads as a blank muzzle-and-ears blob.
+        for side in [Float(-1), 1] {
+            let eye = ModelEntity(mesh: .generateSphere(radius: 0.055),
+                                  materials: [pbr(catEye, roughness: 0.35)])
+            eye.position = f3(Double(side) * 0.13, 0.06, 0.025)
+            eye.scale = f3(1, 1.15, 0.35)
+            panel.addChild(eye)
+        }
     }
 
-    /// The backside: just the tail, curling off the face.
+    /// The backside: just the tail, curling up over his back.
     ///
-    /// Haunches were tried here and removed. As broad shallow domes they landed
-    /// right on top of the face's glyph and the two competed — the result read as
-    /// grey ovals stuck to a pink square rather than as a cat. The tail alone,
-    /// against the drawn glyph, says "rear end" immediately.
+    /// Haunches were tried here and removed. As broad shallow domes they competed
+    /// with everything else on the side and read as grey ovals stuck on rather
+    /// than as a cat. The tail alone says "rear end" immediately.
     private func sculptRump(on panel: Entity, body: PhysicallyBasedMaterial,
                             fur: PhysicallyBasedMaterial, pink: PhysicallyBasedMaterial) {
         // Closely-spaced overlapping segments, so it reads as one continuous curl
@@ -536,58 +610,32 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// Qoob's coat: a warm ivory body with slightly deeper markings on the
     /// sculpted parts, and pink for the bare skin (inner ear, muzzle, paw pads).
     private var catIvory: UIColor { UIColor(red: 0.90, green: 0.87, blue: 0.81, alpha: 1) }
-    private var catMarking: UIColor { UIColor(red: 0.72, green: 0.66, blue: 0.60, alpha: 1) }
+    /// Ears and tail: a mid tone, the way a cat's extremities darken.
+    private var catMarking: UIColor { UIColor(red: 0.70, green: 0.63, blue: 0.57, alpha: 1) }
+    /// Coat spots and rings. Much darker than the ears, because these markings are
+    /// what identifies three of Qoob's six sides now that the decals are gone — at
+    /// the ears' tone they read as faint dents rather than as markings you can name.
+    private var catSpot: UIColor { UIColor(red: 0.38, green: 0.31, blue: 0.28, alpha: 1) }
     private var catPink: UIColor { UIColor(red: 0.93, green: 0.68, blue: 0.70, alpha: 1) }
+    private var catEye: UIColor { UIColor(red: 0.16, green: 0.14, blue: 0.18, alpha: 1) }
 
-    /// The procedural cube-cat: a chamfered box tinted to ivory + oriented
-    /// glyph decals. Used when no 3D model is available.
-    private func buildProceduralCube(colors: [Face: Int], on art: Entity) {
-        let mesh = MeshResource.generateBox(size: cubeSize, cornerRadius: cubeSize * 0.06)
-        let body = ModelEntity(mesh: mesh, materials: [furMaterial()])
-        art.addChild(body)
-        addFaceDecals(colors: colors, on: art, colored: true, faceScale: 0.80)
-    }
-
-    /// Places an oriented decal plane on each of the six faces. `colored` uses
-    /// the colour-tile depiction (tinted square + white glyph, for a grey mesh);
-    /// otherwise a white glyph.
-    private func addFaceDecals(colors: [Face: Int], on art: Entity,
-                               colored: Bool, faceScale: Float) {
-        let half = cubeSize / 2.0 + 0.004    // proud of the face, avoids z-fighting
-        for face in Face.allCases {
-            let index = colors[face] ?? 0
-            let image: UIImage? = colored
-                ? SymbolTextures.icon(index)
-                : (BundledTextures.faceArt(index) ?? SymbolTextures.decal(index))
-            let mesh = MeshResource.generatePlane(width: cubeSize * faceScale,
-                                                  height: cubeSize * faceScale)
-            let decal = ModelEntity(mesh: mesh, materials: [unlitMaterial(image)])
-            let (pos, rot) = decalPlacement(face, offset: half)
-            decal.position = pos
-            decal.orientation = rot
-            art.addChild(decal)
-        }
-    }
-
-    /// Locates the cube mesh: a loose bundled file if present, else the
-    /// `CubeCatModel` asset-catalog Data Set (a USDZ written to a temp file so
-    /// RealityKit can open it by URL).
-    private func cubeModelURL() -> URL? {
+    /// A deliberately-supplied body mesh: a loose `cube_cat.usdz` / `.usdc` /
+    /// `.reality` dropped into the bundle. Returns nil normally, so the sculpted
+    /// loaf in `buildCatBody` is used.
+    ///
+    /// The `CubeCatModel` Data Set in the asset catalogue is intentionally *not*
+    /// consulted: it's a single mesh with one flat material — a plain rounded box
+    /// with no cat in it — and the sculpted body supersedes it. Drop in a real cat
+    /// model as a loose file and it takes over, keeping its own materials.
+    private func loadOverrideModel() -> Entity? {
+        var url: URL?
         for ext in ["usdz", "usdc", "reality"] {
-            if let url = Bundle.main.url(forResource: "cube_cat", withExtension: ext) { return url }
+            if let found = Bundle.main.url(forResource: "cube_cat", withExtension: ext) {
+                url = found
+                break
+            }
         }
-        if let asset = NSDataAsset(name: "CubeCatModel") {
-            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("cube_cat.usdz")
-            if (try? asset.data.write(to: tmp)) != nil { return tmp }
-        }
-        return nil
-    }
-
-    /// Loads the cube mesh, normalised to fit a unit cube centred at the origin,
-    /// warmed to a soft ivory. Returns nil (→ procedural cube) if unavailable.
-    private func loadCubeModel() -> Entity? {
-        guard let url = cubeModelURL(),
-              let loaded = try? Entity.load(contentsOf: url) else { return nil }
+        guard let url, let loaded = try? Entity.load(contentsOf: url) else { return nil }
 
         let bounds = loaded.visualBounds(relativeTo: nil)
         let maxDim = max(bounds.extents.x, max(bounds.extents.y, bounds.extents.z))
@@ -597,15 +645,14 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         let s = cubeSize / maxDim
         loaded.scale = SIMD3<Float>(repeating: s)
         loaded.position = -bounds.center * s
-        recolor(loaded, with: furMaterial())
         holder.addChild(loaded)
         return holder
     }
 
-    /// Position + orientation that place a decal plane (default normal +Z,
-    /// up +Y) flat on the given cube face, with its "up" chosen so the glyph
-    /// reads naturally.
-    private func decalPlacement(_ face: Face, offset h: Float) -> (SIMD3<Float>, simd_quatf) {
+    /// Position + orientation of a frame sitting on the given side of the body:
+    /// local +Z points out of it, local +Y is "up" across it. Sculpted features are
+    /// built in that frame.
+    private func faceFrame(_ face: Face, offset h: Float) -> (SIMD3<Float>, simd_quatf) {
         let q = Float.pi / 2
         let x = f3(1, 0, 0), y = f3(0, 1, 0)
         switch face {
@@ -1023,15 +1070,6 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     }
 
     // MARK: - Helpers
-
-    /// Recolours every ModelEntity in a hierarchy with a single material.
-    private func recolor(_ entity: Entity, with material: RealityKit.Material) {
-        if let model = entity as? ModelEntity, model.model != nil {
-            let count = max(1, model.model!.materials.count)
-            model.model!.materials = Array(repeating: material, count: count)
-        }
-        for child in entity.children { recolor(child, with: material) }
-    }
 
     /// Visits every ModelEntity in a hierarchy (self included).
     private func forEachModel(_ entity: Entity, _ body: (ModelEntity) -> Void) {

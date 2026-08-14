@@ -84,8 +84,11 @@ struct QoobSoftBodyConfig {
 struct FurConfig {
     var enabled: Bool = true
 
-    var tuftHeight: Double = 0.16          // how far a tuft sticks out
-    var tuftBaseRadius: Double = 0.026     // thickness at the root
+    // Kept small on purpose. At 0.16 the eight corner tufts stood well clear of
+    // Qoob's outline and read as white spikes or scratches around him rather than
+    // as fur — the more so now that his body is otherwise clean.
+    var tuftHeight: Double = 0.07          // how far a tuft sticks out
+    var tuftBaseRadius: Double = 0.030     // thickness at the root
 
     /// Max lean (radians) a tuft reaches at full wind. ← main "fur response" knob.
     var windResponse: Double = 0.32

@@ -229,16 +229,21 @@ struct Level {
         return seen
     }
 
-    /// The cube-cat's face layout at level start:
-    /// front = face, up = butt, down = 4 paws, left = dot, right = ring,
-    /// back = three dots (triangle). Indices are CatSymbol raw values.
+    /// Qoob's layout at level start, arranged so the sculpt is anatomically
+    /// sensible: his face looks forward, his backside is directly opposite it,
+    /// his paws are underneath, and the abstract markings sit on his spine and
+    /// two flanks.
+    ///
+    /// The butt used to be on `.up` — on top of his head, with an abstract mark
+    /// where his rear should be. Which symbol starts on which face is arbitrary
+    /// for fairness, so this only affects how he reads.
     static func startingFaces() -> [Face: Int] {
-        [.front: CatSymbol.face.rawValue,
-         .up:    CatSymbol.butt.rawValue,
-         .down:  CatSymbol.paws.rawValue,
-         .left:  CatSymbol.dot.rawValue,
-         .right: CatSymbol.ring.rawValue,
-         .back:  CatSymbol.triangle.rawValue]
+        [.front: CatSymbol.face.rawValue,      // head, looking ahead
+         .back:  CatSymbol.butt.rawValue,       // rear + tail, opposite the head
+         .down:  CatSymbol.paws.rawValue,       // paws underneath
+         .up:    CatSymbol.triangle.rawValue,   // three spots along the spine
+         .left:  CatSymbol.dot.rawValue,        // spot on the left flank
+         .right: CatSymbol.ring.rawValue]       // ring on the right flank
     }
 }
 

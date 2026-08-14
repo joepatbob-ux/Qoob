@@ -52,19 +52,6 @@ enum CatSymbol: Int, CaseIterable {
         }
     }
 
-    /// Asset-catalog image name for optional hand-made face art. If present in
-    /// the bundle it replaces the procedural glyph for this face.
-    var assetName: String {
-        switch self {
-        case .face: return "cat_face"
-        case .butt: return "cat_butt"
-        case .paws: return "cat_paws"
-        case .dot: return "cat_dot"
-        case .ring: return "cat_ring"
-        case .triangle: return "cat_triangle"
-        }
-    }
-
     // MARK: - Glyph drawing
 
     /// Draws this symbol's shapes centred in `rect` using `ink`.
@@ -152,13 +139,14 @@ enum CatSymbol: Int, CaseIterable {
     }
 }
 
-/// Generates and caches the cube-face and tile textures for each symbol index.
+/// Generates and caches the floor-tile textures for each symbol index.
+///
+/// The cube-face `decal` and HUD `icon` generators were removed along with the
+/// face decals: Qoob's sides are sculpted now, so nothing consumed them.
 enum SymbolTextures {
 
-    private static var faceCache: [Int: UIImage] = [:]   // decals
     private static var tileCache: [Int: UIImage] = [:]
     private static var frameCache: [Int: UIImage] = [:]
-    private static var iconCache: [Int: UIImage] = [:]
 
     private static let px: CGFloat = 256
 
@@ -167,44 +155,6 @@ enum SymbolTextures {
         format.scale = 1               // fixed pixel size, independent of screen
         format.opaque = false
         return UIGraphicsImageRenderer(size: CGSize(width: px, height: px), format: format)
-    }
-
-    /// Cube-face **decal**: the glyph in white on a transparent background, with
-    /// a soft dark halo so it reads on any accent colour. Placed on an
-    /// explicitly-oriented plane per face by the renderer, so the glyph's "up"
-    /// is controlled precisely (no reliance on SCNBox's per-face UVs).
-    static func decal(_ index: Int) -> UIImage {
-        if let cached = faceCache[index] { return cached }
-        let symbol = CatSymbol.from(index)
-        let img = renderer().image { rctx in
-            let ctx = rctx.cgContext
-            let full = CGRect(x: 0, y: 0, width: px, height: px)
-            let inset = full.insetBy(dx: px * 0.14, dy: px * 0.14)
-            ctx.setShadow(offset: .zero, blur: px * 0.03,
-                          color: UIColor(white: 0, alpha: 0.55).cgColor)
-            symbol.draw(in: ctx, rect: inset, ink: UIColor(white: 1.0, alpha: 0.98))
-        }
-        faceCache[index] = img
-        return img
-    }
-
-    /// A compact HUD chip: white glyph on a rounded accent square.
-    static func icon(_ index: Int) -> UIImage {
-        if let cached = iconCache[index] { return cached }
-        let symbol = CatSymbol.from(index)
-        let img = renderer().image { rctx in
-            let ctx = rctx.cgContext
-            let full = CGRect(x: 0, y: 0, width: px, height: px)
-            let bg = full.insetBy(dx: px * 0.06, dy: px * 0.06)
-            let path = UIBezierPath(roundedRect: bg, cornerRadius: px * 0.22)
-            symbol.accent.setFill(); path.fill()
-            let inset = full.insetBy(dx: px * 0.22, dy: px * 0.22)
-            ctx.setShadow(offset: .zero, blur: px * 0.02,
-                          color: UIColor(white: 0, alpha: 0.4).cgColor)
-            symbol.draw(in: ctx, rect: inset, ink: UIColor(white: 1.0, alpha: 0.98))
-        }
-        iconCache[index] = img
-        return img
     }
 
     /// Target-tile texture: the glyph glowing in its accent colour, inlaid into a

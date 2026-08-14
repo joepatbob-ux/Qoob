@@ -8,10 +8,12 @@
 //  them up — no code change needed.
 //
 //  Expected image names:
-//    fur_albedo, fur_normal        — cat body (tinted per face by accent colour)
+//    fur_albedo, fur_normal        — Qoob's coat
 //    carpet_albedo, carpet_normal  — floor
-//    cat_face, cat_butt, cat_paws, cat_dot, cat_ring, cat_triangle
-//                                  — optional hand-made face art (else glyphs)
+//
+//  There is no per-symbol face art any more: Qoob's sides are sculpted as the
+//  body parts their symbols depict rather than carrying flat glyph decals, so
+//  the old `cat_face` / `cat_butt` / … overrides had nothing left to override.
 //
 
 import UIKit
@@ -24,9 +26,4 @@ enum BundledTextures {
     static var furNormal: UIImage?   { image("fur_normal") }
     static var carpet: UIImage?      { image("carpet_albedo") }
     static var carpetNormal: UIImage? { image("carpet_normal") }
-
-    /// Hand-made art for a face's symbol, if provided.
-    static func faceArt(_ index: Int) -> UIImage? {
-        image(CatSymbol.from(index).assetName)
-    }
 }
