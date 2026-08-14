@@ -23,9 +23,9 @@ struct SettingsView: View {
                         .disabled(viewModel.motionUnavailable)
                     Toggle("On-screen buttons", isOn: $viewModel.showButtons)
                     if viewModel.showButtons {
-                        Picker("Button position", selection: $viewModel.dpadSide) {
-                            ForEach(DPadSide.allCases) { side in
-                                Text(side.displayName).tag(side)
+                        Picker("Layout", selection: $viewModel.controlLayout) {
+                            ForEach(ControlLayout.allCases) { layout in
+                                Text(layout.displayName).tag(layout)
                             }
                         }
                     }

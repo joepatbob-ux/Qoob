@@ -12,15 +12,42 @@ enum GamePhase {
     case playing     // endless — there is no win/lose phase
 }
 
-/// Where the on-screen D-pad sits along the bottom.
-enum DPadSide: String, CaseIterable, Identifiable {
-    case left, center, right
+/// How the on-screen movement controls are arranged. Presets, so the game is
+/// playable one tap out of Settings; free placement is layered on top of these
+/// later rather than replacing them.
+enum ControlLayout: String, CaseIterable, Identifiable {
+    case dpadCenter     // classic cross, centred along the bottom
+    case dpadLeft       // classic cross, tucked to the left
+    case dpadRight      // classic cross, tucked to the right
+    case splitThumbs    // left/right under the left thumb, up/down under the right
+    case corners        // four separate buttons spread into the bottom corners
+
     var id: String { rawValue }
+
     var displayName: String {
         switch self {
-        case .left:   return "Left"
-        case .center: return "Center"
-        case .right:  return "Right"
+        case .dpadCenter:  return "D-pad, centre"
+        case .dpadLeft:    return "D-pad, left"
+        case .dpadRight:   return "D-pad, right"
+        case .splitThumbs: return "Split thumbs"
+        case .corners:     return "Spread out"
+        }
+    }
+
+    /// True for the layouts that draw a single joined cross.
+    var isDPad: Bool {
+        switch self {
+        case .dpadCenter, .dpadLeft, .dpadRight: return true
+        case .splitThumbs, .corners:             return false
+        }
+    }
+
+    /// Horizontal alignment for the D-pad layouts.
+    var alignment: HorizontalAlignment {
+        switch self {
+        case .dpadLeft:  return .leading
+        case .dpadRight: return .trailing
+        default:         return .center
         }
     }
 }
@@ -82,11 +109,11 @@ final class GameViewModel: ObservableObject {
     }
     private static let floorThemeKey = "floorTheme"
 
-    /// On-screen D-pad position (Settings). Persisted.
-    @Published var dpadSide: DPadSide {
-        didSet { UserDefaults.standard.set(dpadSide.rawValue, forKey: Self.dpadSideKey) }
+    /// On-screen control arrangement (Settings). Persisted.
+    @Published var controlLayout: ControlLayout {
+        didSet { UserDefaults.standard.set(controlLayout.rawValue, forKey: Self.controlLayoutKey) }
     }
-    private static let dpadSideKey = "dpadSide"
+    private static let controlLayoutKey = "controlLayout"
 
     /// Board camera lean (Settings). Persisted. Default top-down.
     @Published var boardTilt: BoardTilt {
@@ -104,8 +131,8 @@ final class GameViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         floorTheme = defaults.string(forKey: Self.floorThemeKey)
             .flatMap(FloorTheme.init(rawValue:)) ?? .default
-        dpadSide = defaults.string(forKey: Self.dpadSideKey)
-            .flatMap(DPadSide.init(rawValue:)) ?? .center
+        controlLayout = defaults.string(forKey: Self.controlLayoutKey)
+            .flatMap(ControlLayout.init(rawValue:)) ?? .dpadCenter
         boardTilt = defaults.string(forKey: Self.boardTiltKey)
             .flatMap(BoardTilt.init(rawValue:)) ?? .flat
     }

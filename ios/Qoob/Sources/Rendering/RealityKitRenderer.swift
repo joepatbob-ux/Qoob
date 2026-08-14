@@ -283,19 +283,34 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // RealityKit light intensity is in lux and scales very differently from
     // SceneKit's arbitrary units; these are tuned by eye against the old look.
     private func setupLighting() {
-        let key = DirectionalLightComponent(color: .white, intensity: 6000)
+        // 6000 lux is overcast-daylight bright, which flattened the floor into a
+        // pale wash and left nothing for the textures to shade against. Indoor
+        // levels, with a wider key/fill ratio, give the rooms some depth.
+        let key = DirectionalLightComponent(color: warmKey, intensity: 2600)
         keyLight.components.set(key)
         keyLight.components.set(DirectionalLightComponent.Shadow())
         keyLight.look(at: .zero, from: f3(-3, 6, 3), upVector: f3(0, 1, 0), relativeTo: nil)
         root.addChild(keyLight)
 
-        // A soft fill from the opposite side lifts the shadows (a stand-in for
-        // SceneKit's ambient term); no shadow of its own.
-        let fill = DirectionalLightComponent(color: .white, intensity: 2200)
+        // A soft, cooler fill from the opposite side lifts the shadows (a
+        // stand-in for SceneKit's ambient term); no shadow of its own.
+        //
+        // NOTE: on the Simulator a hard dark wedge appears beside Qoob. It is not
+        // a lit shadow — raising this fill doesn't lighten it — but the Simulator
+        // failing to compile `meshShadowCasterProgrammableBlending` (it can't read
+        // from a rendertarget, which transparent shadow casters need, and our
+        // decals are alpha-blended). Needs checking on real hardware before
+        // anyone tries to "fix" it in the lighting.
+        let fill = DirectionalLightComponent(color: coolFill, intensity: 900)
         fillLight.components.set(fill)
         fillLight.look(at: .zero, from: f3(4, 5, -3), upVector: f3(0, 1, 0), relativeTo: nil)
         root.addChild(fillLight)
     }
+
+    /// Slightly warm key, slightly cool fill — cheap way to keep a flat top-down
+    /// scene from reading as uniformly grey.
+    private var warmKey: UIColor { UIColor(red: 1.0, green: 0.96, blue: 0.90, alpha: 1) }
+    private var coolFill: UIColor { UIColor(red: 0.80, green: 0.86, blue: 1.0, alpha: 1) }
 
     private func setupCamera() {
         // The 3-arg init defaults its field-of-view orientation to vertical
@@ -307,9 +322,12 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     }
 
     private let cameraFOV: Double = 50            // vertical field of view (°)
-    // The view spans slightly LESS than the board, so the board overflows the
-    // screen on every side (full-bleed). <1 = bleed.
-    private let boardBleed: Double = 0.92
+    // How much of the board the view spans. This used to be 0.92 — the board
+    // overflowed the screen on every side for a full-bleed look — but that put
+    // the outer ring of cells off screen, and Qoob could roll into it and
+    // disappear behind the toolbar. Above 1.0 the whole board fits with a margin
+    // of surrounding floor, which also reads more like a room you're looking into.
+    private let boardBleed: Double = 1.08
 
     func setBoardTilt(_ radians: Double) {
         boardTiltRadians = radians
@@ -373,6 +391,8 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             buildProceduralCube(colors: colors, on: art)
         }
 
+        addCatFeatures(colors: colors, on: art)
+
         // Idle breathing + roll squash are owned by the soft-body effect
         // (RealityKitEnvironmentEffects), which drives this art node's scale.
 
@@ -386,6 +406,138 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         }
         return container
     }
+
+    // MARK: - Cat features
+    //
+    // The bundled `cube_cat.usdz` is a single mesh with one flat material, so
+    // none of the cat is in the asset — it's sculpted here instead.
+    //
+    // Qoob is a genuine cube-cat: every face is sculpted as the body part its
+    // symbol depicts, so whichever face lands up is what you see from above —
+    // his face, his backside with the tail, four paws in the air, or a smooth
+    // flank. Features are welded to the art node, so they roll with him and get
+    // squashed by the soft-body effect along with the rest of him.
+    //
+    // Placement is driven by the symbol map rather than hard-coded to `.front`,
+    // so the sculpt always agrees with the decals however `Level.startingFaces`
+    // assigns them.
+
+    private func addCatFeatures(colors: [Face: Int], on art: Entity) {
+        // Features are tinted a shade deeper than the body. Sculpted in the body's
+        // own ivory they separated only by shading, which at this size read as
+        // noise; a little tonal contrast makes them legible as form.
+        let fur = furMaterial(tint: catMarking)
+        let pink = pbr(catPink, roughness: 0.78)
+
+        for face in Face.allCases {
+            let symbol = CatSymbol.from(colors[face] ?? 0)
+
+            // Reuse the decal frame: at the face centre, with local +Z pointing
+            // out of the face and local +Y as the glyph's "up". Relief is then
+            // built in comfortable 2D-ish terms.
+            let (position, orientation) = decalPlacement(face, offset: cubeSize / 2)
+            let panel = Entity()
+            panel.position = position
+            panel.orientation = orientation
+
+            switch symbol {
+            case .face:     sculptFace(on: panel, fur: fur, pink: pink)
+            case .butt:     sculptRump(on: panel, body: furMaterial(), fur: fur, pink: pink)
+            case .paws:     sculptPaws(on: panel, pink: pink)
+            case .dot, .ring, .triangle:
+                break       // flanks stay smooth, so the die still reads as a die
+            }
+            art.addChild(panel)
+        }
+    }
+
+    /// The head: two ears at the top corners and a muzzle over the drawn nose.
+    /// Relief only — protrusions stay shallow so they read as anatomy rather than
+    /// as hardware bolted to a box.
+    private func sculptFace(on panel: Entity, fur: PhysicallyBasedMaterial,
+                            pink: PhysicallyBasedMaterial) {
+        for side in [Float(-1), 1] {
+            let ear = Entity()
+
+            let outer = ModelEntity(mesh: .generateBox(width: 0.26, height: 0.30, depth: 0.14,
+                                                       cornerRadius: 0.05),
+                                    materials: [fur])
+            ear.addChild(outer)
+
+            let inner = ModelEntity(mesh: .generateBox(width: 0.13, height: 0.15, depth: 0.05,
+                                                       cornerRadius: 0.03),
+                                    materials: [pink])
+            inner.position = f3(0, 0.01, 0.07)
+            ear.addChild(inner)
+
+            // Top corners of the face, splayed outward and leaning out of it.
+            ear.position = f3(Double(side) * 0.29, 0.27, 0.03)
+            ear.orientation = quat(side * -0.34, f3(0, 0, 1)) * quat(0.30, f3(1, 0, 0))
+            panel.addChild(ear)
+        }
+
+        // Muzzle: a flattened dome sitting over the glyph's nose.
+        let muzzle = ModelEntity(mesh: .generateSphere(radius: 0.11), materials: [pink])
+        muzzle.position = f3(0, -0.10, 0.03)
+        muzzle.scale = f3(1.5, 0.85, 0.5)
+        panel.addChild(muzzle)
+    }
+
+    /// The backside: just the tail, curling off the face.
+    ///
+    /// Haunches were tried here and removed. As broad shallow domes they landed
+    /// right on top of the face's glyph and the two competed — the result read as
+    /// grey ovals stuck to a pink square rather than as a cat. The tail alone,
+    /// against the drawn glyph, says "rear end" immediately.
+    private func sculptRump(on panel: Entity, body: PhysicallyBasedMaterial,
+                            fur: PhysicallyBasedMaterial, pink: PhysicallyBasedMaterial) {
+        // Closely-spaced overlapping segments, so it reads as one continuous curl
+        // rather than a dotted line. A tail is meant to extend past the body, so
+        // unlike the ears it can protrude freely without looking bolted on.
+        let segments = 14
+        for i in 0..<segments {
+            let t = Float(i) / Float(segments - 1)
+            let segment = ModelEntity(mesh: .generateSphere(radius: 0.062 * (1 - 0.5 * t)),
+                                      materials: [fur])
+            // A hooked curl: out and up, then back over itself, staying near the
+            // face plane so the whole length shows from directly above.
+            let angle = Double(t) * 2.4
+            let reach = Double(0.16 + 0.18 * Double(t))
+            segment.position = f3(sin(angle) * reach * 0.9,
+                                  0.10 + (1 - cos(angle)) * reach * 0.75,
+                                  Double(0.045 + 0.02 * t))
+            panel.addChild(segment)
+        }
+
+        let pucker = ModelEntity(mesh: .generateSphere(radius: 0.05), materials: [pink])
+        pucker.position = f3(0, -0.04, 0.045)
+        pucker.scale = f3(1, 1, 0.5)
+        panel.addChild(pucker)
+    }
+
+    /// Four paw pads, so landing this face up genuinely reads as paws in the air.
+    private func sculptPaws(on panel: Entity, pink: PhysicallyBasedMaterial) {
+        for (dx, dy) in [(-0.20, -0.16), (0.20, -0.16), (-0.20, 0.22), (0.20, 0.22)] {
+            let pad = ModelEntity(mesh: .generateSphere(radius: 0.10), materials: [pink])
+            pad.position = f3(dx, dy, 0.02)
+            pad.scale = f3(1, 1, 0.45)
+            panel.addChild(pad)
+
+            // Toe beans.
+            for tx in [-0.09, 0.0, 0.09] {
+                let toe = ModelEntity(mesh: .generateSphere(radius: 0.037), materials: [pink])
+                toe.position = f3(dx + tx, dy + (tx == 0 ? 0.15 : 0.125), 0.02)
+                toe.scale = f3(1, 1, 0.45)
+                panel.addChild(toe)
+            }
+        }
+    }
+
+    /// Qoob's coat: a warm ivory body with slightly deeper markings on the
+    /// sculpted parts, and pink for the bare skin (inner ear, muzzle, paw pads).
+    private var catIvory: UIColor { UIColor(red: 0.90, green: 0.87, blue: 0.81, alpha: 1) }
+    private var catMarking: UIColor { UIColor(red: 0.72, green: 0.66, blue: 0.60, alpha: 1) }
+    private var catPink: UIColor { UIColor(red: 0.93, green: 0.68, blue: 0.70, alpha: 1) }
 
     /// The procedural cube-cat: a chamfered box tinted to ivory + oriented
     /// glyph decals. Used when no 3D model is available.
@@ -475,9 +627,9 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// fakes fur convincingly without shell geometry (which would need a
     /// device-only CustomMaterial). Bundled `fur_albedo` / `fur_normal` assets
     /// win if present, else procedural fur (ProceduralFur) is used.
-    private func furMaterial() -> PhysicallyBasedMaterial {
+    private func furMaterial(tint: UIColor? = nil) -> PhysicallyBasedMaterial {
         var m = PhysicallyBasedMaterial()
-        let tint = UIColor(red: 0.90, green: 0.87, blue: 0.81, alpha: 1)   // warm ivory
+        let tint = tint ?? catIvory
 
         let albedo = BundledTextures.fur ?? ProceduralFur.albedo()
         if let tex = loadTexture(albedo, semantic: .color) {
@@ -543,14 +695,24 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     /// The floor texture for the current look. `.checkerboard` returns nil here
     /// (coloured per-cell in `neutralTileMaterial`).
+    ///
+    /// `.default` means "whatever this room's floor is", which now resolves to a
+    /// procedurally-drawn per-room floor. A bundled `floor_<room>` asset still
+    /// wins if you drop one in.
     private func floorTexture() -> UIImage? {
         if let themed = ProceduralTextures.floorTexture(floorTheme) { return themed }
         if floorTheme == .checkerboard { return nil }
-        return BundledTextures.image(environment.floorTextureName) ?? BundledTextures.carpet
+        return BundledTextures.image(environment.floorTextureName)
+            ?? BundledTextures.carpet
+            ?? ProceduralTextures.roomFloor(for: environment)
     }
 
     private func floorNormal() -> UIImage? {
-        ProceduralTextures.floorNormal(floorTheme) ?? BundledTextures.carpetNormal
+        if let themed = ProceduralTextures.floorNormal(floorTheme) { return themed }
+        if floorTheme == .checkerboard { return nil }
+        if floorTheme != .default { return BundledTextures.carpetNormal }
+        return BundledTextures.carpetNormal
+            ?? ProceduralTextures.roomFloorNormal(for: environment)
     }
 
     /// A ground plane under the whole board: floor texture if supplied, else
@@ -578,14 +740,21 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         groundEntity = node
     }
 
-    /// A tile dressed as a target: the depiction the player must land face-down.
+    /// A tile dressed as a target: the depiction the player wants to land on.
     private func targetTileMaterial(_ index: Int) -> PhysicallyBasedMaterial {
         var m = PhysicallyBasedMaterial()
         if let res = loadTexture(SymbolTextures.tile(index), semantic: .color) {
             m.baseColor = .init(tint: .white, texture: .init(res))
+            // The tile art is now a dark slot with a bright glyph, so drive
+            // emission from the same image: the glyph and rim glow while the slot
+            // around them stays dark. A flat emissive tint (the old 0.10) just
+            // washed the whole tile and left it looking like a patch of rug.
+            m.emissiveColor = .init(texture: .init(res))
+            m.emissiveIntensity = 0.6
+        } else {
+            m.emissiveColor = .init(color: GamePalette.color(index))
+            m.emissiveIntensity = 0.25
         }
-        m.emissiveColor = .init(color: GamePalette.color(index))
-        m.emissiveIntensity = 0.10
         m.roughness = 0.85
         return m
     }

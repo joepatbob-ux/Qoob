@@ -207,17 +207,50 @@ enum SymbolTextures {
         return img
     }
 
-    /// Target-tile texture: the glyph in the accent colour on a cream slot.
+    /// Target-tile texture: the glyph glowing in its accent colour, inlaid into a
+    /// dark slot.
+    ///
+    /// This used to be an accent glyph on cream, which against a dark floor read
+    /// as a sheet of paper lying on the rug rather than as part of it. A dark base
+    /// with a bright, haloed glyph and an accent rim reads as light coming *out*
+    /// of the floor.
     static func tile(_ index: Int) -> UIImage {
         if let cached = tileCache[index] { return cached }
         let symbol = CatSymbol.from(index)
         let img = renderer().image { rctx in
             let ctx = rctx.cgContext
             let full = CGRect(x: 0, y: 0, width: px, height: px)
-            ctx.setFillColor(UIColor(red: 0.96, green: 0.94, blue: 0.88, alpha: 1).cgColor)
+
+            // Dark slot, a touch of the accent mixed in so it doesn't go muddy.
+            ctx.setFillColor(UIColor(red: 0.11, green: 0.10, blue: 0.14, alpha: 1).cgColor)
             ctx.fill(full)
-            let inset = full.insetBy(dx: px * 0.18, dy: px * 0.18)
-            symbol.draw(in: ctx, rect: inset, ink: symbol.accent)
+            ctx.setFillColor(symbol.accent.withAlphaComponent(0.14).cgColor)
+            ctx.fill(full)
+
+            // A soft pool of accent light in the middle of the slot.
+            if let gradient = CGGradient(
+                colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                colors: [symbol.accent.withAlphaComponent(0.45).cgColor,
+                         symbol.accent.withAlphaComponent(0.0).cgColor] as CFArray,
+                locations: [0, 1]
+            ) {
+                let mid = CGPoint(x: px / 2, y: px / 2)
+                ctx.drawRadialGradient(gradient, startCenter: mid, startRadius: 0,
+                                       endCenter: mid, endRadius: px * 0.46,
+                                       options: [])
+            }
+
+            // Accent rim, so the tile has a defined edge in the floor.
+            let rim = full.insetBy(dx: px * 0.05, dy: px * 0.05)
+            let rimPath = UIBezierPath(roundedRect: rim, cornerRadius: px * 0.10)
+            rimPath.lineWidth = px * 0.035
+            symbol.accent.withAlphaComponent(0.85).setStroke()
+            rimPath.stroke()
+
+            // The glyph itself, bright and haloed so it reads as emissive.
+            let inset = full.insetBy(dx: px * 0.20, dy: px * 0.20)
+            ctx.setShadow(offset: .zero, blur: px * 0.06, color: symbol.accent.cgColor)
+            symbol.draw(in: ctx, rect: inset, ink: UIColor(white: 1.0, alpha: 0.95))
         }
         tileCache[index] = img
         return img

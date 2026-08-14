@@ -35,6 +35,8 @@ final class BoardModel {
     private let reachable: Set<GridCell>
     /// Rows where targets may appear (never under the HUD controls).
     private let targetRows: Range<Int>
+    /// Columns where targets may appear (never bled off the screen edges).
+    private let targetCols: Range<Int>
     /// Deterministic source for respawn placement (seeded per level).
     private var rng: SeededGenerator
 
@@ -61,6 +63,7 @@ final class BoardModel {
             blocked: level.blocked)
         rng = SeededGenerator(seed: 0xB0A2D_9E37 &+ UInt64(bitPattern: Int64(level.index)) &* 2654435761)
         targetRows = level.targetRows
+        targetCols = level.targetCols
     }
 
     /// 4-neighbour flood fill of the free cells reachable from `start`.
@@ -175,20 +178,22 @@ final class BoardModel {
     /// the cat, and item cells/goals are avoided.
     @discardableResult
     func spawnTarget(avoiding cube: GridCell) -> Target? {
-        // Free, reachable, target-less cells. `rowsOnly` keeps targets out of the
-        // HUD-covered rows; if that leaves nothing, we relax it as a fallback.
-        func freeCells(rowsOnly: Bool) -> [GridCell] {
+        // Free, reachable, target-less cells. `onScreenOnly` keeps targets clear of
+        // the HUD-covered rows and the columns the full-bleed camera crops off the
+        // edges; if that leaves nothing, we relax it as a fallback.
+        func freeCells(onScreenOnly: Bool) -> [GridCell] {
             var out: [GridCell] = []
             for cell in reachable where cell != cube {
                 if items.contains(cell) || itemGoals.contains(cell) { continue }
                 if cells[cell.row][cell.col].target != nil { continue }
-                if rowsOnly && !targetRows.contains(cell.row) { continue }
+                if onScreenOnly && !(targetRows.contains(cell.row)
+                                     && targetCols.contains(cell.col)) { continue }
                 out.append(cell)
             }
             return out
         }
-        var candidates = freeCells(rowsOnly: true)
-        if candidates.isEmpty { candidates = freeCells(rowsOnly: false) }
+        var candidates = freeCells(onScreenOnly: true)
+        if candidates.isEmpty { candidates = freeCells(onScreenOnly: false) }
         guard !candidates.isEmpty else { return nil }
         // Sort for deterministic indexing (Set iteration order isn't stable).
         candidates.sort { ($0.row, $0.col) < ($1.row, $1.col) }

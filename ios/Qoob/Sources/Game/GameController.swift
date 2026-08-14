@@ -25,6 +25,7 @@ final class GameController {
     private var currentLevel: Level!
     private var isRolling = false
     private var streak = 0
+    private var rollsSinceMatch = 0
 
     // Timing
     private var displayLink: CADisplayLink?
@@ -82,6 +83,7 @@ final class GameController {
 
         isRolling = false
         streak = 0
+        rollsSinceMatch = 0
         nextRollAllowedAt = 0
         viewModel.levelIndex = index
         viewModel.environmentName = level.environment.displayName
@@ -164,24 +166,20 @@ final class GameController {
                 viewModel.knockoffs += 1
                 sfx { audio.playMatch(streak: 1) }
                 haptic { Haptics.match() }
+            } else {
+                // Nothing to knock off — nudge against the wall or furniture so
+                // the block reads as intentional rather than as a dropped input.
+                renderer.rejectRoll(direction)
+                haptic { Haptics.blocked() }
             }
             nextRollAllowedAt = now + restBetweenRolls
             return
         }
 
-        // A target tile refuses the cube unless the face that *will* land on it
-        // matches — so the cat can only step onto the right depiction. Predict
-        // the down face after this roll without mutating live state.
-        if let wanted = board.target(at: target) {
-            var predicted = cube
-            predicted.applyRoll(direction)
-            if predicted.downColorIndex != wanted {
-                renderer.rejectRoll(direction)
-                haptic { Haptics.blocked() }
-                nextRollAllowedAt = now + restBetweenRolls
-                return
-            }
-        }
+        // Target tiles no longer refuse the cube: Qoob rolls wherever he likes
+        // and a tile is satisfied when the face that happens to land on it
+        // matches (see `resolveMatch`). Nothing to check here — the only things
+        // that stop a roll are walls, furniture and unpushable toys.
 
         // If a toy sits on the target cell, try to push it one cell further.
         if board.hasItem(target) {
@@ -189,6 +187,8 @@ final class GameController {
             guard board.passable(col: beyond.col, row: beyond.row),
                   !board.hasItem(beyond) else {
                 // Toy is against a wall / furniture / another toy — can't push.
+                renderer.rejectRoll(direction)
+                haptic { Haptics.blocked() }
                 nextRollAllowedAt = now + restBetweenRolls
                 return
             }
@@ -238,11 +238,22 @@ final class GameController {
                 renderer.addTarget(col: spawned.col, row: spawned.row, colorIndex: spawned.colorIndex)
             }
             viewModel.tilesRemaining = board.remaining
-        } else if board.cell(col: cube.col, row: cube.row)?.target == nil {
-            // Landing on a neutral/cleared tile gently cools the streak.
-            streak = 0
+            rollsSinceMatch = 0
+        } else {
+            // Now that Qoob rolls freely, most landings are on plain floor, so
+            // resetting the streak on every neutral tile would make it
+            // unreachable. Instead it only cools after a long dry spell.
+            rollsSinceMatch += 1
+            if rollsSinceMatch >= Self.rollsToCoolStreak {
+                streak = 0
+                rollsSinceMatch = 0
+            }
         }
     }
+
+    /// Consecutive non-matching landings before the streak cools. Generous, so
+    /// wandering between targets doesn't feel punished.
+    private static let rollsToCoolStreak = 12
 
 
     // MARK: - Feedback (gated by Settings)

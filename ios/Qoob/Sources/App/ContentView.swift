@@ -67,7 +67,7 @@ struct ContentView: View {
                         toysBadge
                         Spacer()
                         if viewModel.showButtons {
-                            dPad
+                            controls
                                 .padding(.bottom, 12)
                         }
                     }
@@ -234,6 +234,19 @@ struct ContentView: View {
 
     // MARK: - D-pad
 
+    @ViewBuilder
+    private var controls: some View {
+        switch viewModel.controlLayout {
+        case .dpadCenter, .dpadLeft, .dpadRight:
+            dPad
+        case .splitThumbs:
+            splitThumbControls
+        case .corners:
+            cornerControls
+        }
+    }
+
+    /// The classic joined cross, aligned per the chosen preset.
     private var dPad: some View {
         VStack(spacing: 10) {
             dirButton(.forward, "chevron.up")
@@ -243,24 +256,53 @@ struct ContentView: View {
             }
             dirButton(.back, "chevron.down")
         }
-        .frame(maxWidth: .infinity, alignment: dpadAlignment)
-        .padding(.horizontal, viewModel.dpadSide == .center ? 0 : 24)
+        .frame(maxWidth: .infinity,
+               alignment: Alignment(horizontal: viewModel.controlLayout.alignment,
+                                    vertical: .center))
+        .padding(.horizontal, viewModel.controlLayout == .dpadCenter ? 0 : 20)
     }
 
-    private var dpadAlignment: Alignment {
-        switch viewModel.dpadSide {
-        case .left:   return .leading
-        case .center: return .center
-        case .right:  return .trailing
+    /// Left/right under the left thumb, forward/back under the right — so neither
+    /// hand has to reach across the board.
+    private var splitThumbControls: some View {
+        HStack {
+            HStack(spacing: 14) {
+                dirButton(.left, "chevron.left")
+                dirButton(.right, "chevron.right")
+            }
+            Spacer(minLength: 24)
+            VStack(spacing: 14) {
+                dirButton(.forward, "chevron.up")
+                dirButton(.back, "chevron.down")
+            }
         }
+        .padding(.horizontal, 8)
+    }
+
+    /// Four separate buttons pushed out to the edges, leaving the centre of the
+    /// board clear.
+    private var cornerControls: some View {
+        VStack(spacing: 18) {
+            HStack {
+                dirButton(.left, "chevron.left")
+                Spacer()
+                dirButton(.forward, "chevron.up")
+            }
+            HStack {
+                dirButton(.back, "chevron.down")
+                Spacer()
+                dirButton(.right, "chevron.right")
+            }
+        }
+        .padding(.horizontal, 8)
     }
 
     private func dirButton(_ direction: RollDirection, _ icon: String) -> some View {
         Button(action: { viewModel.roll(direction) }) {
             Image(systemName: icon)
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: 22, weight: .bold))
                 .foregroundColor(.white)
-                .frame(width: 62, height: 62)
+                .frame(width: 56, height: 56)
         }
         // Neutral (untinted) Liquid Glass — no accent colour.
         .liquidGlassButton(tint: nil, prominent: false, in: Circle())

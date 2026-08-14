@@ -37,6 +37,7 @@ struct Level {
     let environment: Environment
     let perched: [PerchedToy]    // toys sitting on furniture to knock off
     let targetRows: Range<Int>   // rows where targets may appear (not under the HUD)
+    let targetCols: Range<Int>   // columns where targets may appear (not bled off screen)
 
     /// Every target colour is reachable by rolling (the cube carries all six
     /// colours), and every target *cell* is placed only in the region the cube
@@ -46,10 +47,14 @@ struct Level {
 
         // The board fills the screen, so its shape follows the view's aspect
         // ratio: a fixed cell count on the short side, more on the long side.
-        // A denser grid (more, smaller cells) reads better full-screen; both
-        // grow gently with progression, capped for phone screens.
-        let shortCells = min(7 + index / 2, 9)
-        let longCap = 15
+        // Both grow gently with progression, capped for phone screens.
+        //
+        // Kept deliberately coarse. At 7 columns a cell is only ~57pt on a phone,
+        // which is smaller than Qoob's sculpted features — his ears, tail and paw
+        // pads turned to mush. Fewer, larger cells give him the presence to read
+        // as a cat, which matters more here than board size.
+        let shortCells = min(5 + index / 3, 7)
+        let longCap = 11
         let width: Int
         let height: Int
         if aspect >= 1 {
@@ -72,6 +77,14 @@ struct Level {
         var rowHi = height - bottomReserved
         if rowHi - rowLo < 3 { rowLo = 0; rowHi = height }
         let targetRows = rowLo..<rowHi
+
+        // The renderer frames the board full-bleed, so the outermost columns run
+        // off the edges of the screen. Keep targets out of them — a target you
+        // can only half see (or can't see at all) isn't a fair thing to hunt for.
+        var colLo = 1
+        var colHi = width - 1
+        if colHi - colLo < 3 { colLo = 0; colHi = width }
+        let targetCols = colLo..<colHi
 
         // --- Place furniture (impassable), from this environment's set ---
         let pieceCount = min(1 + index / 2, max(1, cellCount / 8))
@@ -120,8 +133,11 @@ struct Level {
         // RNG made a level index generate a *different* board every launch —
         // defeating the whole point of the deterministic generator.
         let pool = sortedCells(freeReachable)
-        // Targets draw from cells outside the reserved (HUD-covered) rows.
-        let restricted = freeReachable.filter { targetRows.contains($0.row) }
+        // Targets draw only from cells that are actually on screen and clear of
+        // the HUD: inside the reserved rows and away from the bled-off columns.
+        let restricted = freeReachable.filter {
+            targetRows.contains($0.row) && targetCols.contains($0.col)
+        }
         let targetPool = sortedCells(restricted.isEmpty ? freeReachable : restricted)
         while targets.count < targetCount && tAttempts < 800 && !targetPool.isEmpty {
             tAttempts += 1
@@ -183,7 +199,8 @@ struct Level {
                      itemGoals: goals,
                      environment: env,
                      perched: perched,
-                     targetRows: targetRows)
+                     targetRows: targetRows,
+                     targetCols: targetCols)
     }
 
     /// Cells in a stable row-major order, so a seeded RNG indexing them picks
