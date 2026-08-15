@@ -742,19 +742,42 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     }
 
     /// Four paw pads, so landing this side up genuinely reads as paws in the air.
+    ///
+    /// The four are placed symmetrically about the middle of the side. They used to
+    /// be laid out by hand at rows -0.15 and +0.21, which isn't centred, and each
+    /// pad's toes push its own outline further up still — so the whole set sat high
+    /// and off to one side, and the pads that wrapped around Qoob's rounded corner
+    /// looked scattered rather than like a tidy set of paws.
     private func sculptPaws(on panel: Entity) {
-        for (dx, dy) in [(Float(-0.18), Float(-0.15)), (0.18, -0.15), (-0.18, 0.21), (0.18, 0.21)] {
-            let pad = coatPart(.generateSphere(radius: 0.10), .skin)
-            seat(pad, x: dx, y: dy)
-            pad.scale = f3(1, 1, 0.45)
-            panel.addChild(pad)
+        let padRadius: Float = 0.095
+        let toeRadius: Float = 0.034
+        let toeReach: Float = 0.135      // how far a pad's toes sit above it
+        let spread: Float = 0.16         // each paw's distance from the middle
 
-            // Toe beans.
-            for tx in [Float(-0.085), 0.0, 0.085] {
-                let toe = coatPart(.generateSphere(radius: 0.037), .skin)
-                seat(toe, x: dx + tx, y: dy + (tx == 0 ? 0.145 : 0.12))
-                toe.scale = f3(1, 1, 0.45)
-                panel.addChild(toe)
+        // A pad-and-toes unit runs from -padRadius up to +toeReach + toeRadius, so
+        // its own centre is above the pad. Offsetting by that keeps the four units —
+        // not just the four pads — symmetric about the middle of the side.
+        let unitCentre = (toeReach + toeRadius - padRadius) / 2
+
+        for sx in [Float(-1), 1] {
+            for sy in [Float(-1), 1] {
+                let dx = sx * spread
+                let dy = sy * spread - unitCentre
+
+                let pad = coatPart(.generateSphere(radius: padRadius), .skin)
+                seat(pad, x: dx, y: dy)
+                pad.scale = f3(1, 1, 0.45)
+                panel.addChild(pad)
+
+                // Toe beans, the middle one reaching slightly further than its
+                // neighbours so the three read as a curve rather than a straight bar.
+                for tx in [Float(-0.075), 0, 0.075] {
+                    let toe = coatPart(.generateSphere(radius: toeRadius), .skin)
+                    seat(toe, x: dx + tx,
+                         y: dy + (tx == 0 ? toeReach : toeReach - 0.018))
+                    toe.scale = f3(1, 1, 0.45)
+                    panel.addChild(toe)
+                }
             }
         }
     }
@@ -961,14 +984,16 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// A tile dressed as a target: the depiction the player wants to land on.
     private func targetTileMaterial(_ index: Int) -> PhysicallyBasedMaterial {
         var m = PhysicallyBasedMaterial()
-        if let res = loadTexture(SymbolTextures.tile(index), semantic: .color) {
+        if let res = loadTexture(SymbolTextures.tile(index, appearance), semantic: .color) {
             m.baseColor = .init(tint: .white, texture: .init(res))
-            // The tile art is now a dark slot with a bright glyph, so drive
-            // emission from the same image: the glyph and rim glow while the slot
-            // around them stays dark. A flat emissive tint (the old 0.10) just
-            // washed the whole tile and left it looking like a patch of rug.
+            // Emission is driven from the same image, so the glyph and rim light up
+            // while the slot around them doesn't. A flat emissive tint (the original
+            // 0.10) washed the whole tile and left it a patch of rug.
+            //
+            // Much weaker in a light room: the same glow that reads as light coming
+            // out of a dark floor just blows the pale slot out to white.
             m.emissiveColor = .init(texture: .init(res))
-            m.emissiveIntensity = 0.6
+            m.emissiveIntensity = appearance == .dark ? 0.6 : 0.18
         } else {
             m.emissiveColor = .init(color: GamePalette.color(index))
             m.emissiveIntensity = 0.25

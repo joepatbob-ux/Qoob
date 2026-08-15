@@ -73,10 +73,7 @@ struct ContentView: View {
                     }
                     .padding()
 
-                    scoreBubble
-                        .frame(maxWidth: .infinity, maxHeight: .infinity,
-                               alignment: .topLeading)
-                        .padding()
+                    scoreBreakdownPanel
 
                     mantraView
                         .offset(y: -80)
@@ -88,7 +85,14 @@ struct ContentView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Score, clock and gear all live in the bar, so the top of the
+                // screen is one aligned row. The score used to be an overlay pinned
+                // below the safe area, which left it sitting on its own line under
+                // the other two.
                 if viewModel.phase == .playing {
+                    ToolbarItem(placement: .topBarLeading) {
+                        scoreBubble
+                    }
                     ToolbarItem(placement: .principal) {
                         Text(timeString(viewModel.elapsed))
                             .font(.subheadline.weight(.semibold))
@@ -140,36 +144,41 @@ struct ContentView: View {
 
     // MARK: - Score bubble
 
-    /// A glass score bubble that expands, on tap, into a points breakdown.
+    /// The score, as a bar-height pill. Tapping it toggles the breakdown panel,
+    /// which is drawn as an overlay just under the bar (see `scoreBreakdownPanel`).
+    ///
+    /// A popover was tried first, since it points back at the pill. On iPhone it
+    /// placed itself over the bar regardless of `arrowEdge`, covering the pill it
+    /// belongs to and clipping the clock beside it.
     private var scoreBubble: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.22)) {
-                    viewModel.showScoreBreakdown.toggle()
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(red: 0.95, green: 0.82, blue: 0.35))
-                    Text("\(viewModel.score)")
-                        .font(.system(size: 16, weight: .bold))
-                        .monospacedDigit()
-                        .foregroundStyle(.primary)
-                    Image(systemName: viewModel.showScoreBreakdown ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .tintedGlass(nil, in: Capsule())
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                viewModel.showScoreBreakdown.toggle()
             }
-            .buttonStyle(.plain)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(red: 0.95, green: 0.82, blue: 0.35))
+                Text("\(viewModel.score)")
+                    .font(.system(size: 15, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
 
-            if viewModel.showScoreBreakdown {
-                scoreBreakdown
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
+    /// The breakdown, hanging under the bar on the leading side so it lines up with
+    /// the pill that opens it.
+    @ViewBuilder
+    private var scoreBreakdownPanel: some View {
+        if viewModel.showScoreBreakdown {
+            scoreBreakdown
+                .tintedGlass(nil, in: RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
@@ -189,10 +198,6 @@ struct ContentView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .tintedGlass(nil, in: RoundedRectangle(cornerRadius: 16))
-        // The bubble is laid out with `maxWidth: .infinity` for its top-leading
-        // alignment, which the rows' `Spacer` would otherwise stretch across the
-        // whole screen. Hug the content so it reads as a bubble, not a banner.
         .fixedSize(horizontal: true, vertical: false)
     }
 
