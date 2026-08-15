@@ -886,6 +886,9 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     }
 
     /// Solid or textured PBR helper.
+    ///
+    /// Emission and the UV transform are always assigned, even to their neutral
+    /// values — see `resetUnusedSlots`.
     private func pbr(_ color: UIColor, roughness: Float = 0.85, metallic: Float = 0,
                      emissive: UIColor? = nil) -> PhysicallyBasedMaterial {
         var m = PhysicallyBasedMaterial()
@@ -895,8 +898,37 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         if let e = emissive {
             m.emissiveColor = .init(color: e)
             m.emissiveIntensity = 1.0
+        } else {
+            resetEmission(&m)
         }
+        resetTextureTransform(&m)
         return m
+    }
+
+    // MARK: Material slot hygiene
+    //
+    // Replacing the materials on an existing `ModelComponent` does *not* clear the
+    // slots the new material leaves untouched — whatever the previous material set
+    // stays in effect on the GPU. That produced two visible bugs on tiles, which
+    // wear the floor material and a target material alternately:
+    //
+    //  • A newly-spawned target rendered as a magnified corner of its own art,
+    //    because the floor's per-cell UV transform (scale 0.5, offset by grid
+    //    position) was still applied to it. Reading the material back in Swift
+    //    showed an identity transform, which is what made this confusing: the
+    //    struct was clean, the render wasn't.
+    //  • A cleared target left a pale glowing square behind, because the target
+    //    material's emission was never switched off.
+    //
+    // So every material that *doesn't* want these slots states so explicitly.
+
+    private func resetEmission(_ m: inout PhysicallyBasedMaterial) {
+        m.emissiveColor = .init(color: .black)
+        m.emissiveIntensity = 0
+    }
+
+    private func resetTextureTransform(_ m: inout PhysicallyBasedMaterial) {
+        m.textureCoordinateTransform = .init(offset: .zero, scale: .one)
     }
 
     /// A repeat-wrapped texture parameter (so UV offsets tile continuously).
@@ -948,6 +980,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                 extent: extent,
                 centre: SIMD2<Float>(Float(board.width - 1) / 2, Float(board.height - 1) / 2))
             mat.roughness = 0.95
+            resetEmission(&mat)
         } else {
             mat = pbr(environment.groundColor(appearance), roughness: 1.0)
         }
@@ -986,6 +1019,10 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         var m = PhysicallyBasedMaterial()
         if let res = loadTexture(SymbolTextures.tile(index, appearance), semantic: .color) {
             m.baseColor = .init(tint: .white, texture: .init(res))
+            // The tile art fills 0...1, unlike the floor, which is scaled and offset
+            // per cell. Stated explicitly because this material lands on tiles that
+            // were wearing the floor's transform (see `resetTextureTransform`).
+            resetTextureTransform(&m)
             // Emission is driven from the same image, so the glyph and rim light up
             // while the slot around them doesn't. A flat emissive tint (the original
             // 0.10) washed the whole tile and left it a patch of rug.
@@ -1019,6 +1056,9 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             m.textureCoordinateTransform = .init(offset: SIMD2<Float>(Float(col) * s, Float(row) * s),
                                                  scale: SIMD2<Float>(s, s))
             m.roughness = 0.95
+            // A cleared target hands its tile back to this material, so the glow it
+            // was wearing has to be switched off or it stays lit.
+            resetEmission(&m)
             return m
         }
         return pbr(environment.floorColor(appearance), roughness: 0.85)
