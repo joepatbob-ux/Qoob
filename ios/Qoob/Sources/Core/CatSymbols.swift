@@ -161,7 +161,7 @@ private extension UIColor {
 /// face decals: Qoob's sides are sculpted now, so nothing consumed them.
 enum SymbolTextures {
 
-    private static var tileCache: [String: UIImage] = [:]
+    private static var glyphCache: [String: UIImage] = [:]
     private static var frameCache: [Int: UIImage] = [:]
 
     private static let px: CGFloat = 256
@@ -173,62 +173,36 @@ enum SymbolTextures {
         return UIGraphicsImageRenderer(size: CGSize(width: px, height: px), format: format)
     }
 
-    /// Target-tile texture: the tile the player is hunting for, inlaid into the
-    /// floor, in a form that suits the room's own brightness.
+    /// The target's icon: just the symbol on a transparent field, to sit above the
+    /// floor inside the pulsing ring.
     ///
-    /// Dark rooms get a dark slot with a bright, haloed glyph, so it reads as light
-    /// coming *out* of the floor. Light rooms get the inverse — a pale slot with a
-    /// saturated glyph — because the dark slot that works at night reads as a hole
-    /// punched in a pale floor by day. (The very first version was a cream slot in
-    /// both, which against a dark rug looked like a sheet of paper lying on it.)
-    static func tile(_ index: Int, _ appearance: Appearance) -> UIImage {
+    /// Targets used to be a whole tile — a slot fill, an accent wash, a radial glow
+    /// and a rounded border, drawn onto the floor tile itself. The ring and the
+    /// symbol carry it on their own, and dropping the rest means the floor reads
+    /// through, so a target no longer looks like a card laid on the rug (dark
+    /// rooms) or a hole punched in it (light rooms).
+    ///
+    /// The symbol is haloed in the *opposite* direction to the room so it holds up
+    /// against a busy floor: a dark glow behind a bright glyph at night, a pale one
+    /// behind a deep glyph by day.
+    static func glyph(_ index: Int, _ appearance: Appearance) -> UIImage {
         let key = "\(index).\(appearance)"
-        if let cached = tileCache[key] { return cached }
+        if let cached = glyphCache[key] { return cached }
         let symbol = CatSymbol.from(index)
         let dark = appearance == .dark
 
         let img = renderer().image { rctx in
             let ctx = rctx.cgContext
-            let full = CGRect(x: 0, y: 0, width: px, height: px)
+            let inset = CGRect(x: 0, y: 0, width: px, height: px)
+                .insetBy(dx: px * 0.12, dy: px * 0.12)
 
-            // The slot, with a touch of the accent mixed in so it isn't neutral.
-            ctx.setFillColor(dark
-                ? UIColor(red: 0.11, green: 0.10, blue: 0.14, alpha: 1).cgColor
-                : UIColor(red: 0.97, green: 0.96, blue: 0.93, alpha: 1).cgColor)
-            ctx.fill(full)
-            ctx.setFillColor(symbol.accent.withAlphaComponent(dark ? 0.14 : 0.22).cgColor)
-            ctx.fill(full)
-
-            // A soft pool of accent in the middle of the slot.
-            if let gradient = CGGradient(
-                colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                colors: [symbol.accent.withAlphaComponent(dark ? 0.45 : 0.38).cgColor,
-                         symbol.accent.withAlphaComponent(0.0).cgColor] as CFArray,
-                locations: [0, 1]
-            ) {
-                let mid = CGPoint(x: px / 2, y: px / 2)
-                ctx.drawRadialGradient(gradient, startCenter: mid, startRadius: 0,
-                                       endCenter: mid, endRadius: px * 0.46,
-                                       options: [])
-            }
-
-            // Accent rim, so the tile has a defined edge in the floor.
-            let rim = full.insetBy(dx: px * 0.05, dy: px * 0.05)
-            let rimPath = UIBezierPath(roundedRect: rim, cornerRadius: px * 0.10)
-            rimPath.lineWidth = px * 0.035
-            symbol.accent.withAlphaComponent(dark ? 0.85 : 1.0).setStroke()
-            rimPath.stroke()
-
-            // The glyph: bright and haloed in the dark, saturated in the light.
-            let inset = full.insetBy(dx: px * 0.20, dy: px * 0.20)
-            if dark {
-                ctx.setShadow(offset: .zero, blur: px * 0.06, color: symbol.accent.cgColor)
-                symbol.draw(in: ctx, rect: inset, ink: UIColor(white: 1.0, alpha: 0.95))
-            } else {
-                symbol.draw(in: ctx, rect: inset, ink: symbol.accent.deepened())
-            }
+            ctx.setShadow(offset: .zero, blur: px * 0.08,
+                          color: dark ? UIColor(white: 0, alpha: 0.7).cgColor
+                                      : UIColor(white: 1, alpha: 0.9).cgColor)
+            symbol.draw(in: ctx, rect: inset,
+                        ink: dark ? symbol.accent : symbol.accent.deepened())
         }
-        tileCache[key] = img
+        glyphCache[key] = img
         return img
     }
 

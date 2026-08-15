@@ -38,7 +38,8 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     /// Tile entities + their glow highlights, keyed by "col,row".
     private var tileEntities: [String: ModelEntity] = [:]
-    private var ringEntities: [String: Entity] = [:]
+    /// The ring-and-icon marker floating over each live target, keyed by "col,row".
+    private var markerEntities: [String: Entity] = [:]
 
     /// Pushable toy entities keyed by their current cell; the goal cells.
     private var itemEntities: [GridCell: Entity] = [:]
@@ -112,13 +113,10 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         setupLighting()                     // key/fill differ between the two looks
         applyFloorTheme(floorTheme)         // re-skins the ground and every tile
         restyleQoob()
-        for (key, tile) in tileEntities where ringEntities[key] != nil {
-            // Target tiles keep their depiction, but their emission is tuned per
-            // look, so they need rebuilding too.
-            let (col, row) = cellCoords(fromKey: key)
-            if let target = targetIndexByCell[GridCell(col: col, row: row)] {
-                tile.model?.materials = [targetTileMaterial(target)]
-            }
+        // The target icon is drawn per appearance, so rebuild each live marker.
+        for (cell, index) in targetIndexByCell {
+            removeTargetMarker(col: cell.col, row: cell.row)
+            addTargetMarker(col: cell.col, row: cell.row, index: index)
         }
     }
 
@@ -140,7 +138,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         boardAnchor.removeFromParent()
         cubeEntity.removeFromParent()
         tileEntities.removeAll()
-        ringEntities.removeAll()
+        markerEntities.removeAll()
         targetIndexByCell.removeAll()
         itemEntities.removeAll()
         perchedEntities.removeAll()
@@ -224,36 +222,26 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     func clearTile(col: Int, row: Int) {
         let key = "\(col),\(row)"
 
-        if let tile = tileEntities[key] {
-            tile.model?.materials = [neutralTileMaterial(col: col, row: row)]
-        }
-        if let ring = ringEntities[key] {
-            animator.removePulsers(for: ring)
-            ring.removeFromParent()
-            ringEntities[key] = nil
-        }
-        targetIndexByCell[GridCell(col: col, row: row)] = nil
+        removeTargetMarker(col: col, row: row)
     }
 
     func addTarget(col: Int, row: Int, colorIndex: Int) {
         let key = "\(col),\(row)"
+        // A small lift on the floor tile, to draw the eye to where the new target
+        // appeared. The tile keeps its floor material throughout.
         if let tile = tileEntities[key] {
-            tile.model?.materials = [targetTileMaterial(colorIndex)]
             let base = tile.position
             animator.run(tile, duration: 0.28, ease: .linear, step: { e, t in
                 e.position = base + f3(0, Double(sin(Double(t) * .pi) * 0.06), 0)
             }, completion: { [weak tile] in tile?.position = base })
         }
-        if let existing = ringEntities[key] {
-            animator.removePulsers(for: existing)
-            existing.removeFromParent()
-        }
-        addHighlight(col: col, row: row, index: colorIndex)
-        targetIndexByCell[GridCell(col: col, row: row)] = colorIndex
 
-        // No fade-in on the new highlight. It had one, and it did nothing: the
-        // frame's endless pulse sets its own opacity every frame, so it overwrote
-        // the fade on the very next tick.
+        removeTargetMarker(col: col, row: row)
+        addTargetMarker(col: col, row: row, index: colorIndex)
+
+        // No fade-in on the ring. It had one, and it did nothing: the ring's endless
+        // pulse sets its own opacity every frame, so it overwrote the fade on the
+        // very next tick.
     }
 
     func rejectRoll(_ direction: RollDirection) {
@@ -1014,31 +1002,6 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         return .init(offset: offset, scale: SIMD2<Float>(s * extent, s * extent))
     }
 
-    /// A tile dressed as a target: the depiction the player wants to land on.
-    private func targetTileMaterial(_ index: Int) -> PhysicallyBasedMaterial {
-        var m = PhysicallyBasedMaterial()
-        if let res = loadTexture(SymbolTextures.tile(index, appearance), semantic: .color) {
-            m.baseColor = .init(tint: .white, texture: .init(res))
-            // The tile art fills 0...1, unlike the floor, which is scaled and offset
-            // per cell. Stated explicitly because this material lands on tiles that
-            // were wearing the floor's transform (see `resetTextureTransform`).
-            resetTextureTransform(&m)
-            // Emission is driven from the same image, so the glyph and rim light up
-            // while the slot around them doesn't. A flat emissive tint (the original
-            // 0.10) washed the whole tile and left it a patch of rug.
-            //
-            // Much weaker in a light room: the same glow that reads as light coming
-            // out of a dark floor just blows the pale slot out to white.
-            m.emissiveColor = .init(texture: .init(res))
-            m.emissiveIntensity = appearance == .dark ? 0.6 : 0.18
-        } else {
-            m.emissiveColor = .init(color: GamePalette.color(index))
-            m.emissiveIntensity = 0.25
-        }
-        m.roughness = 0.85
-        return m
-    }
-
     /// A plain floor tile. Continuous floor across cells: offset each tile's
     /// UVs by its grid coords so the (seamless) pattern flows unbroken.
     private func neutralTileMaterial(col: Int, row: Int) -> PhysicallyBasedMaterial {
@@ -1093,7 +1056,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
         // Re-skin every neutral tile. Target tiles (those carrying a highlight)
         // keep their depiction.
-        for (key, tile) in tileEntities where ringEntities[key] == nil {
+        for (key, tile) in tileEntities {
             let (col, row) = cellCoords(fromKey: key)
             tile.model?.materials = [neutralTileMaterial(col: col, row: row)]
         }
@@ -1246,32 +1209,50 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                 let cell = board.cells[row][col]
                 let mesh = MeshResource.generateBox(width: size, height: tileThickness,
                                                     depth: size, cornerRadius: 0)
-                let material: RealityKit.Material = (cell.target != nil)
-                    ? targetTileMaterial(cell.target!)
-                    : neutralTileMaterial(col: col, row: row)
-                let tile = ModelEntity(mesh: mesh, materials: [material])
+                // Every tile is plain floor. A target is marked by what floats above
+                // it, not by re-skinning the tile — see `addTargetMarker`.
+                let tile = ModelEntity(mesh: mesh,
+                                       materials: [neutralTileMaterial(col: col, row: row)])
                 tile.position = f3(Double(col), Double(-tileThickness) / 2.0, Double(row))
                 boardAnchor.addChild(tile)
                 tileEntities["\(col),\(row)"] = tile
 
                 if let target = cell.target {
-                    addHighlight(col: col, row: row, index: target)
-                    targetIndexByCell[GridCell(col: col, row: row)] = target
+                    addTargetMarker(col: col, row: row, index: target)
                 }
             }
         }
     }
 
-    private func addHighlight(col: Int, row: Int, index: Int) {
-        let highlight = makeHighlight(index: index)
-        highlight.position = f3(Double(col), 0.02, Double(row))
-        boardAnchor.addChild(highlight)
-        ringEntities["\(col),\(row)"] = highlight
+    /// Marks a target: a pulsing ring with the symbol's icon inside it, hovering
+    /// just above the floor. Both are self-lit, alpha-blended planes, so the floor
+    /// shows through between them — a target adds to the room rather than replacing
+    /// a patch of it.
+    private func addTargetMarker(col: Int, row: Int, index: Int) {
+        let marker = Entity()
+        marker.position = f3(Double(col), 0.02, Double(row))
+
+        marker.addChild(makePulsingRing(index: index))
+        marker.addChild(makeTargetIcon(index: index))
+
+        boardAnchor.addChild(marker)
+        markerEntities["\(col),\(row)"] = marker
+        targetIndexByCell[GridCell(col: col, row: row)] = index
     }
 
-    /// A flat, pulsing square frame that hovers just above an unsolved target
-    /// tile (self-lit so it glows). A frame, not a ring.
-    private func makeHighlight(index: Int) -> Entity {
+    /// Takes a target's marker away, pulsers and all.
+    private func removeTargetMarker(col: Int, row: Int) {
+        let key = "\(col),\(row)"
+        if let marker = markerEntities[key] {
+            forEachModel(marker) { animator.removePulsers(for: $0) }
+            marker.removeFromParent()
+            markerEntities[key] = nil
+        }
+        targetIndexByCell[GridCell(col: col, row: row)] = nil
+    }
+
+    /// The pulsing square frame.
+    private func makePulsingRing(index: Int) -> Entity {
         let mesh = MeshResource.generatePlane(width: cubeSize * 0.96, depth: cubeSize * 0.96)
         let node = ModelEntity(mesh: mesh, materials: [unlitMaterial(SymbolTextures.frame(index))])
         setUnlitOpacity(node, 0.9)
@@ -1281,6 +1262,18 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             e.scale = baseScale * Float(1.0 + 0.08 * p)
             setUnlitOpacity(e, Float(0.55 + 0.35 * (1 - p)))
         }
+        return node
+    }
+
+    /// The icon inside the ring. Static: the ring does the pulsing, so animating
+    /// this too would just make the pair restless.
+    private func makeTargetIcon(index: Int) -> Entity {
+        let mesh = MeshResource.generatePlane(width: cubeSize * 0.66, depth: cubeSize * 0.66)
+        let node = ModelEntity(mesh: mesh,
+                               materials: [unlitMaterial(SymbolTextures.glyph(index, appearance))])
+        // A hair above the ring's plane, so the two never z-fight.
+        node.position = f3(0, 0.004, 0)
+        setUnlitOpacity(node, 1.0)
         return node
     }
 
