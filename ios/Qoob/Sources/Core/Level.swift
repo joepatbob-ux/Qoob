@@ -49,12 +49,13 @@ struct Level {
         // ratio: a fixed cell count on the short side, more on the long side.
         // Both grow gently with progression, capped for phone screens.
         //
-        // Kept deliberately coarse. At 7 columns a cell is only ~57pt on a phone,
-        // which is smaller than Qoob's sculpted features — his ears, tail and paw
-        // pads turned to mush. Fewer, larger cells give him the presence to read
-        // as a cat, which matters more here than board size.
-        let shortCells = min(5 + index / 3, 7)
-        let longCap = 11
+        // Cell counts are set so a cell lands around 50pt on a phone — Qoob about a
+        // third smaller than the 5-wide board he was on, giving a noticeably roomier
+        // space to wander. His sculpt survives the shrink now that it's a simple
+        // plush face rather than the fussier fur-and-wedges version that turned to
+        // mush at this size.
+        let shortCells = min(7 + index / 3, 9)
+        let longCap = 16
         let width: Int
         let height: Int
         if aspect >= 1 {
@@ -122,8 +123,10 @@ struct Level {
 
         // --- Targets, only on reachable free cells ---
         let freeReachable = reach.subtracting([start])
-        let maxTargets = max(1, freeReachable.count)
-        let targetCount = min(3 + index, maxTargets)
+        // One target at a time. `BoardModel.spawnTarget` puts a fresh one somewhere
+        // else each time this one is satisfied, so the count holds at one for the
+        // whole session: always exactly one thing to go and find.
+        let targetCount = min(1, max(1, freeReachable.count))
 
         var placed = Set<GridCell>()
         var targets: [Target] = []

@@ -102,4 +102,14 @@ enum CatCoat {
         }
     }
 
+    /// Whiskers, in the coat's opposing colour — dark on the cream cat, white on
+    /// the black one. They were tried in a low-contrast grey first and read as
+    /// specks of dirt; a whisker is only a pixel or two wide, so full contrast is
+    /// the only thing that makes it a line rather than a smudge.
+    static func whisker(_ appearance: Appearance) -> UIColor {
+        switch appearance {
+        case .light: return UIColor(red: 0.22, green: 0.20, blue: 0.21, alpha: 1)
+        case .dark:  return UIColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)
+        }
+    }
 }

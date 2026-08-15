@@ -320,19 +320,12 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // levels, with a wider key/fill ratio, give the rooms some depth.
         let key = DirectionalLightComponent(color: warmKey, intensity: keyIntensity)
         keyLight.components.set(key)
-        keyLight.components.set(DirectionalLightComponent.Shadow())
         keyLight.look(at: .zero, from: f3(-3, 6, 3), upVector: f3(0, 1, 0), relativeTo: nil)
         root.addChild(keyLight)
+        updateShadow()
 
         // A soft, cooler fill from the opposite side lifts the shadows (a
         // stand-in for SceneKit's ambient term); no shadow of its own.
-        //
-        // NOTE: on the Simulator a hard dark wedge appears beside Qoob. It is not
-        // a lit shadow — raising this fill doesn't lighten it — but the Simulator
-        // failing to compile `meshShadowCasterProgrammableBlending` (it can't read
-        // from a rendertarget, which transparent shadow casters need, and our
-        // decals are alpha-blended). Needs checking on real hardware before
-        // anyone tries to "fix" it in the lighting.
         let fill = DirectionalLightComponent(color: coolFill, intensity: fillIntensity)
         fillLight.components.set(fill)
         fillLight.look(at: .zero, from: f3(4, 5, -3), upVector: f3(0, 1, 0), relativeTo: nil)
@@ -408,6 +401,30 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             cameraEntity.look(at: f3(cx, 0, cz), from: f3(cx, h, cz + zOffset),
                               upVector: f3(0, 1, 0), relativeTo: nil)
         }
+
+        cameraHeight = h
+        updateShadow()
+    }
+
+    /// How far above the board the camera ended up. The shadow needs it — see
+    /// `updateShadow`.
+    private var cameraHeight: Double = 0
+
+    /// Sizes the key light's shadow to actually reach the board.
+    ///
+    /// `DirectionalLightComponent.Shadow` defaults `maximumDistance` to 5 metres,
+    /// measured out from the camera. The camera sits about 18 units above a board
+    /// 16 units long, so at the default almost nothing was inside the shadow's
+    /// range: shadows rendered in a narrow band near the top of the board and then
+    /// stopped dead, which showed up as a hard vertical line down the board's edge
+    /// and a dark wedge beside Qoob. Covering the camera's distance to the board
+    /// plus the board's own extent puts the whole scene inside the map.
+    private func updateShadow() {
+        let reach = cameraHeight + Double(max(boardCols, boardRows)) * boardBleed
+        keyLight.components.set(
+            DirectionalLightComponent.Shadow(maximumDistance: Float(max(10, reach)),
+                                             depthBias: 2.0)
+        )
     }
 
     // MARK: - Geometry
@@ -540,7 +557,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // effects, which hold references to his art node.
 
     private enum CoatRole: String {
-        case body, marking, skin, eye
+        case body, marking, skin, eye, whisker
     }
 
     private func coatMaterial(_ role: CoatRole) -> PhysicallyBasedMaterial {
@@ -549,6 +566,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         case .marking: return furMaterial(tint: CatCoat.marking(appearance))
         case .skin:    return pbr(CatCoat.nose(appearance), roughness: 0.78)
         case .eye:     return pbr(CatCoat.eye(appearance), roughness: 0.28)
+        case .whisker: return pbr(CatCoat.whisker(appearance), roughness: 0.5)
         }
     }
 
@@ -677,10 +695,22 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         nose.scale = f3(1.25, 0.9, 0.45)
         panel.addChild(nose)
 
-        // No whiskers. They were tried as thin boxes and, at the size Qoob actually
-        // occupies on screen, a whisker is about a pixel wide — six of them read as
-        // specks of dirt around his face rather than as whiskers. On the plush this
-        // follows they're printed lines, which geometry can't stand in for here.
+        // Whiskers: three a side, in the coat's opposing colour — dark on the cream
+        // cat, white on the black one. An earlier pass drew them in a low-contrast
+        // grey and they read as specks of dirt; at a pixel or two wide, full contrast
+        // is what makes a whisker a line instead of a smudge.
+        //
+        // They fan from beside the nose rather than from the outer edge of the side,
+        // so they stay on the flat of the face and don't wrap around his corner.
+        for side in [Float(-1), 1] {
+            for (i, dy) in [Float(0.02), -0.035, -0.09].enumerated() {
+                let whisker = coatPart(.generateBox(width: 0.26, height: 0.022, depth: 0.022,
+                                                    cornerRadius: 0.011), .whisker)
+                seat(whisker, x: side * 0.20, y: dy, proud: 0.012)
+                whisker.orientation = quat(side * Float(i - 1) * -0.26, f3(0, 0, 1))
+                panel.addChild(whisker)
+            }
+        }
     }
 
     /// The backside: just the tail, curling up over his back.
@@ -891,17 +921,41 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             if let n = floorNormal(), let nres = loadTexture(n, semantic: .normal) {
                 mat.normal = .init(texture: repeatTexture(nres))
             }
-            mat.textureCoordinateTransform = .init(scale: SIMD2<Float>(extent, extent))
+            mat.textureCoordinateTransform = groundTextureTransform(
+                extent: extent,
+                centre: SIMD2<Float>(Float(board.width - 1) / 2, Float(board.height - 1) / 2))
             mat.roughness = 0.95
         } else {
             mat = pbr(environment.groundColor(appearance), roughness: 1.0)
         }
         let node = ModelEntity(mesh: mesh, materials: [mat])
+        // Sits just under the tile tops rather than below the slab. At a full
+        // tile-thickness lower, the slab's side faces caught the light and drew a
+        // step around the board — an edge the play area shouldn't have now the whole
+        // board is on screen.
         node.position = f3(Double(board.width - 1) / 2.0,
-                           Double(-tileThickness) - 0.02,
+                           Double(-tileThickness) * 0.15,
                            Double(board.height - 1) / 2.0)
         boardAnchor.addChild(node)
         groundEntity = node
+    }
+
+    /// UV transform that makes the surrounding ground continue the board's own floor
+    /// pattern instead of restarting it.
+    ///
+    /// The ground used to scale its UVs by `extent`, giving one texture repeat per
+    /// world unit, while the tiles use `floorTexScale` — one repeat per two units.
+    /// The two densities met at the board edge and the mismatch read as a seam
+    /// running around the play area. Matching the scale *and* phasing the offset to
+    /// the grid makes the floor one continuous surface.
+    private func groundTextureTransform(extent: Float,
+                                        centre: SIMD2<Float>) -> PhysicallyBasedMaterial.TextureCoordinateTransform {
+        let s = Float(floorTexScale)
+        // A tile at `col` maps world x to UV s * (x + 0.5); the plane's UV 0 sits at
+        // its own left/near edge, `extent / 2` before the board's centre.
+        let offset = SIMD2<Float>(s * (centre.x - extent / 2 + 0.5),
+                                  s * (centre.y - extent / 2 + 0.5))
+        return .init(offset: offset, scale: SIMD2<Float>(s * extent, s * extent))
     }
 
     /// A tile dressed as a target: the depiction the player wants to land on.
@@ -962,7 +1016,9 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                 if let n = floorNormal(), let nres = loadTexture(n, semantic: .normal) {
                     mat.normal = .init(texture: repeatTexture(nres))
                 }
-                mat.textureCoordinateTransform = .init(scale: SIMD2<Float>(extent, extent))
+                mat.textureCoordinateTransform = groundTextureTransform(
+                    extent: extent,
+                    centre: SIMD2<Float>(Float(boardCols - 1) / 2, Float(boardRows - 1) / 2))
                 mat.roughness = 0.95
             } else {
                 mat = pbr(environment.groundColor(appearance), roughness: 1.0)
