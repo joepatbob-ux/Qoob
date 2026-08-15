@@ -50,8 +50,8 @@ struct Level {
         // Both grow gently with progression, capped for phone screens.
         //
         // Cell counts are set so a cell lands around 50pt on a phone — Qoob about a
-        // third smaller than the 5-wide board he was on, giving a noticeably roomier
-        // space to wander. His sculpt survives the shrink now that it's a simple
+        // third smaller than the 5-wide board they were on, giving a noticeably roomier
+        // space to wander. Their sculpt survives the shrink now that it's a simple
         // plush face rather than the fussier fur-and-wedges version that turned to
         // mush at this size.
         let shortCells = min(7 + index / 3, 9)
@@ -233,13 +233,13 @@ struct Level {
     }
 
     /// Qoob's layout at level start, arranged so the sculpt is anatomically
-    /// sensible: his face looks forward, his backside is directly opposite it,
-    /// his paws are underneath, and the abstract markings sit on his spine and
+    /// sensible: their face looks forward, their backside is directly opposite it,
+    /// their paws are underneath, and the abstract markings sit on their spine and
     /// two flanks.
     ///
-    /// The butt used to be on `.up` — on top of his head, with an abstract mark
-    /// where his rear should be. Which symbol starts on which face is arbitrary
-    /// for fairness, so this only affects how he reads.
+    /// The butt used to be on `.up` — on top of their head, with an abstract mark
+    /// where their rear should be. Which symbol starts on which face is arbitrary
+    /// for fairness, so this only affects how they read.
     static func startingFaces() -> [Face: Int] {
         [.front: CatSymbol.face.rawValue,      // head, looking ahead
          .back:  CatSymbol.butt.rawValue,       // rear + tail, opposite the head

@@ -68,6 +68,10 @@ protocol GameRenderer: AnyObject {
     /// tile (target tiles keep their depiction). Also used at level start.
     func applyFloorTheme(_ theme: FloorTheme)
 
+    func setCatStyle(_ style: CatStyle)
+
+    func setRoomAppearance(_ appearance: RoomAppearance)
+
     /// Lean the camera `radians` off straight-down (0 = top-down). Re-aims live.
     func setBoardTilt(_ radians: Double)
 }

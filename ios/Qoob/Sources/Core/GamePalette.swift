@@ -21,6 +21,35 @@ enum Appearance {
     case light, dark
 }
 
+enum RoomAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+}
+
+enum CatStyle: String, CaseIterable, Identifiable {
+    case cream, black, ginger, grayTabby
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cream: return "Cream point"
+        case .black: return "Black"
+        case .ginger: return "Ginger"
+        case .grayTabby: return "Gray tabby"
+        }
+    }
+}
+
 enum GamePalette {
 
     /// Number of distinct faces/targets — one per cube-cat symbol.
@@ -69,47 +98,48 @@ enum GamePalette {
 enum CatCoat {
 
     /// The body.
-    static func body(_ appearance: Appearance) -> UIColor {
-        switch appearance {
-        case .light: return UIColor(red: 0.94, green: 0.92, blue: 0.88, alpha: 1)
-        case .dark:  return UIColor(red: 0.13, green: 0.13, blue: 0.15, alpha: 1)
+    static func body(_ style: CatStyle) -> UIColor {
+        switch style {
+        case .cream: return UIColor(red: 0.94, green: 0.92, blue: 0.88, alpha: 1)
+        case .black: return UIColor(red: 0.10, green: 0.10, blue: 0.12, alpha: 1)
+        case .ginger: return UIColor(red: 0.78, green: 0.57, blue: 0.30, alpha: 1)
+        case .grayTabby: return UIColor(red: 0.56, green: 0.55, blue: 0.57, alpha: 1)
         }
     }
 
     /// Spots and rings — pitched well clear of the body either way, since these
     /// identify three of the six sides.
-    static func marking(_ appearance: Appearance) -> UIColor {
-        switch appearance {
-        case .light: return UIColor(red: 0.42, green: 0.39, blue: 0.37, alpha: 1)
-        case .dark:  return UIColor(red: 0.62, green: 0.62, blue: 0.66, alpha: 1)
+    static func marking(_ style: CatStyle) -> UIColor {
+        switch style {
+        case .cream: return UIColor(red: 0.34, green: 0.20, blue: 0.14, alpha: 1)
+        case .black: return UIColor(red: 0.62, green: 0.62, blue: 0.66, alpha: 1)
+        case .ginger: return UIColor(red: 0.55, green: 0.31, blue: 0.14, alpha: 1)
+        case .grayTabby: return UIColor(red: 0.20, green: 0.20, blue: 0.23, alpha: 1)
         }
     }
 
     /// Nose, inner ear and paw pads. Pink on both coats, a touch deeper on the
     /// black cat so it doesn't glare.
-    static func nose(_ appearance: Appearance) -> UIColor {
-        switch appearance {
-        case .light: return UIColor(red: 0.95, green: 0.72, blue: 0.73, alpha: 1)
-        case .dark:  return UIColor(red: 0.82, green: 0.56, blue: 0.60, alpha: 1)
-        }
+    static func nose(_ style: CatStyle) -> UIColor {
+        style == .black
+            ? UIColor(red: 0.82, green: 0.56, blue: 0.60, alpha: 1)
+            : UIColor(red: 0.95, green: 0.72, blue: 0.73, alpha: 1)
     }
 
     /// Eyes: near-black on the cream cat, bright blue on the black one.
-    static func eye(_ appearance: Appearance) -> UIColor {
-        switch appearance {
-        case .light: return UIColor(red: 0.20, green: 0.19, blue: 0.22, alpha: 1)
-        case .dark:  return UIColor(red: 0.35, green: 0.68, blue: 0.95, alpha: 1)
-        }
+    static func eye(_ style: CatStyle) -> UIColor {
+        (style == .black || style == .cream)
+            ? UIColor(red: 0.35, green: 0.68, blue: 0.95, alpha: 1)
+            : UIColor(red: 0.20, green: 0.19, blue: 0.22, alpha: 1)
     }
 
     /// Whiskers, in the coat's opposing colour — dark on the cream cat, white on
     /// the black one. They were tried in a low-contrast grey first and read as
     /// specks of dirt; a whisker is only a pixel or two wide, so full contrast is
     /// the only thing that makes it a line rather than a smudge.
-    static func whisker(_ appearance: Appearance) -> UIColor {
-        switch appearance {
-        case .light: return UIColor(red: 0.22, green: 0.20, blue: 0.21, alpha: 1)
-        case .dark:  return UIColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)
-        }
+    static func whisker(_ style: CatStyle) -> UIColor {
+        style == .black
+            ? UIColor(red: 0.97, green: 0.97, blue: 0.98, alpha: 1)
+            : UIColor(red: 0.22, green: 0.20, blue: 0.21, alpha: 1)
     }
 }

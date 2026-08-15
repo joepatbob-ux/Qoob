@@ -116,8 +116,12 @@ enum CatSymbol: Int, CaseIterable {
                          control1: pt(0.05, -0.28),
                          control2: pt(0.30, -0.12))
             ctx.strokePath()
-            // little pucker
-            disc(0.0, 0.05, 0.045)
+            // little asterisk-shaped pucker
+            for angle in [CGFloat(0), .pi / 3, -.pi / 3] {
+                let dx = cos(angle) * 0.07
+                let dy = sin(angle) * 0.07
+                line(pt(-dx, 0.05 - dy), pt(dx, 0.05 + dy), 0.025)
+            }
 
         case .paws:
             paw(-0.20, -0.16, 1.0)

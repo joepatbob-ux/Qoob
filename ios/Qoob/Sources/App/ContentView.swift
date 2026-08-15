@@ -115,6 +115,12 @@ struct ContentView: View {
         .onChange(of: viewModel.floorTheme) { _, theme in
             viewModel.controller?.setFloorTheme(theme)
         }
+        .onChange(of: viewModel.catStyle) { _, style in
+            viewModel.controller?.setCatStyle(style)
+        }
+        .onChange(of: viewModel.roomAppearance) { _, appearance in
+            viewModel.controller?.setRoomAppearance(appearance)
+        }
         .onChange(of: viewModel.boardTilt) { _, tilt in
             viewModel.controller?.setBoardTilt(tilt)
         }
@@ -164,6 +170,12 @@ struct ContentView: View {
                     .font(.system(size: 15, weight: .bold))
                     .monospacedDigit()
                     .foregroundStyle(.primary)
+                    // The score grows without limit, and a toolbar item won't widen
+                    // for it — at two digits it was wrapping "10" onto two lines.
+                    // Hold one line and shrink to fit instead.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .buttonStyle(.plain)

@@ -109,6 +109,16 @@ final class GameViewModel: ObservableObject {
     }
     private static let floorThemeKey = "floorTheme"
 
+    @Published var catStyle: CatStyle {
+        didSet { UserDefaults.standard.set(catStyle.rawValue, forKey: Self.catStyleKey) }
+    }
+    private static let catStyleKey = "catStyle"
+
+    @Published var roomAppearance: RoomAppearance {
+        didSet { UserDefaults.standard.set(roomAppearance.rawValue, forKey: Self.roomAppearanceKey) }
+    }
+    private static let roomAppearanceKey = "roomAppearance"
+
     /// On-screen control arrangement (Settings). Persisted.
     @Published var controlLayout: ControlLayout {
         didSet { UserDefaults.standard.set(controlLayout.rawValue, forKey: Self.controlLayoutKey) }
@@ -131,6 +141,10 @@ final class GameViewModel: ObservableObject {
         let defaults = UserDefaults.standard
         floorTheme = defaults.string(forKey: Self.floorThemeKey)
             .flatMap(FloorTheme.init(rawValue:)) ?? .default
+        catStyle = defaults.string(forKey: Self.catStyleKey)
+            .flatMap(CatStyle.init(rawValue:)) ?? .cream
+        roomAppearance = defaults.string(forKey: Self.roomAppearanceKey)
+            .flatMap(RoomAppearance.init(rawValue:)) ?? .system
         controlLayout = defaults.string(forKey: Self.controlLayoutKey)
             .flatMap(ControlLayout.init(rawValue:)) ?? .dpadCenter
         boardTilt = defaults.string(forKey: Self.boardTiltKey)

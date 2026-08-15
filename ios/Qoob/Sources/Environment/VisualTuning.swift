@@ -62,7 +62,7 @@ struct QoobSoftBodyConfig {
     var anticipationDuration: Double = 0.05
     var anticipationCrouch: Double = 0.07  // squash down before tipping
 
-    // Landing — the squash when he flops onto a new side.
+    // Landing — the squash when they flop onto a new side.
     var landDuration: Double = 0.07
     var squashAmount: Double = 0.19        // ← main "squash amount" knob
 
@@ -86,8 +86,8 @@ struct QoobSoftBodyConfig {
 struct FurConfig {
     /// Off by default. The eight corner tufts never read as fur at the size Qoob
     /// occupies on screen — tall they were white spikes, short they were specks of
-    /// grit around his outline — and they're a fixed pale colour, so on the black
-    /// coat they showed as bright dots. Qoob's fuzz comes from his material's sheen
+    /// grit around their outline — and they're a fixed pale colour, so on the black
+    /// coat they showed as bright dots. Qoob's fuzz comes from their material's sheen
     /// instead. Flip this back on if the tufts get a proper shell-geometry
     /// treatment; the shared wind still drives the grass either way.
     var enabled: Bool = false

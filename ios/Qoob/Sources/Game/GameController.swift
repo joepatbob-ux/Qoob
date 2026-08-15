@@ -74,6 +74,8 @@ final class GameController {
                          colors: Level.startingFaces())
 
         renderer.applyFloorTheme(viewModel.floorTheme)
+        renderer.setCatStyle(viewModel.catStyle)
+        renderer.setRoomAppearance(viewModel.roomAppearance)
         renderer.setBoardTilt(viewModel.boardTilt.radians)
         renderer.present(level: level, board: board, cube: cube)
 
@@ -176,7 +178,7 @@ final class GameController {
             return
         }
 
-        // Target tiles no longer refuse the cube: Qoob rolls wherever he likes
+        // Target tiles no longer refuse the cube: Qoob rolls wherever they like
         // and a tile is satisfied when the face that happens to land on it
         // matches (see `resolveMatch`). Nothing to check here — the only things
         // that stop a roll are walls, furniture and unpushable toys.
@@ -301,6 +303,10 @@ final class GameController {
 
     /// Live floor-theme change from Settings.
     func setFloorTheme(_ theme: FloorTheme) { renderer.applyFloorTheme(theme) }
+
+    func setCatStyle(_ style: CatStyle) { renderer.setCatStyle(style) }
+
+    func setRoomAppearance(_ appearance: RoomAppearance) { renderer.setRoomAppearance(appearance) }
 
     /// Live board-tilt change from Settings.
     func setBoardTilt(_ tilt: BoardTilt) { renderer.setBoardTilt(tilt.radians) }

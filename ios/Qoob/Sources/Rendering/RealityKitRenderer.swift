@@ -52,6 +52,8 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     /// Player-selected floor style (Settings). `.default` uses the environment.
     private var floorTheme: FloorTheme = .default
+    private var catStyle: CatStyle = .cream
+    private var roomAppearance: RoomAppearance = .system
     /// The ground plane under the board, kept so the floor can be re-skinned.
     private var groundEntity: ModelEntity?
 
@@ -95,7 +97,14 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     /// Which look to draw, taken from the system appearance.
     private var appearance: Appearance {
-        view.traitCollection.userInterfaceStyle == .light ? .light : .dark
+        switch roomAppearance {
+        case .system:
+            return view.traitCollection.userInterfaceStyle == .light ? .light : .dark
+        case .light:
+            return .light
+        case .dark:
+            return .dark
+        }
     }
 
     /// RealityKit resolves a material's colour when the material is built, so a
@@ -118,6 +127,16 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             removeTargetMarker(col: cell.col, row: cell.row)
             addTargetMarker(col: cell.col, row: cell.row, index: index)
         }
+    }
+
+    func setRoomAppearance(_ appearance: RoomAppearance) {
+        roomAppearance = appearance
+        applyAppearance()
+    }
+
+    func setCatStyle(_ style: CatStyle) {
+        catStyle = style
+        restyleQoob()
     }
 
     /// Which symbol each live target tile is showing, so tiles can be re-skinned on
@@ -220,8 +239,6 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// anyway, because the frame's endless pulser stayed attached and rewrote its
     /// opacity every frame, fighting the animation that was trying to fade it out.
     func clearTile(col: Int, row: Int) {
-        let key = "\(col),\(row)"
-
         removeTargetMarker(col: col, row: row)
     }
 
@@ -425,8 +442,8 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// holding an `art` child (deformation applied there so it never disturbs the
     /// roll transform the game logic reads from the container).
     ///
-    /// He *moves* like a cube — one cell per roll, pivoting on a bottom edge — but
-    /// he isn't drawn as one. The body is a soft plush loaf, and each side carries
+    /// They *move* like a cube — one cell per roll, pivoting on a bottom edge — but
+    /// they aren't drawn as one. The body is a soft plush loaf, and each side carries
     /// the sculpted body part its symbol depicts.
     private func makeCubeNode(colors: [Face: Int]) -> Entity {
         let container = Entity()
@@ -458,10 +475,10 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         return container
     }
 
-    /// Qoob's body: a heavily-rounded box, so he reads as a soft plush loaf rather
+    /// Qoob's body: a heavily-rounded box, so they read as a soft plush loaf rather
     /// than a die while still filling the unit cell the roll geometry assumes.
     ///
-    /// The proportions stay cubic on purpose. He pivots about a bottom edge at
+    /// The proportions stay cubic on purpose. Qoob pivots about a bottom edge at
     /// y = -0.5, so a body that wasn't square in profile would swing about a point
     /// off its own surface and look like it was hinged on thin air.
     private func buildCatBody(on art: Entity) {
@@ -469,9 +486,9 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                               .body))
     }
 
-    /// How soft Qoob's corners are, as a fraction of his size. At 0.5 he'd be a
+    /// How soft Qoob's corners are, as a fraction of their size. At 0.5 they'd be a
     /// sphere; this is round enough to read as a squishy loaf while the middles of
-    /// his sides stay broad enough to carry ears, paws and markings.
+    /// their sides stay broad enough to carry ears, paws and markings.
     private var bodyCornerRadius: Float { cubeSize * 0.34 }
 
     /// The half-width of the flat area in the middle of a side.
@@ -500,12 +517,12 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // There are no decals any more. Every side used to carry a flat colour-coded
     // glyph plane, which read as stickers pasted onto a box — and edge-on they
     // showed as bright coloured bars along the silhouette. Each side is instead
-    // *sculpted* as the thing its symbol depicts: his head, his rear and tail, his
+    // *sculpted* as the thing its symbol depicts: their head, their rear and tail, their
     // paws, and coat markings on the spine and flanks. Qoob's own anatomy is now
     // the readout, so the player still identifies which side is which.
     //
-    // Features are welded to the art node, so they roll with him and get squashed
-    // by the soft-body effect along with the rest of him. Placement is driven by
+    // Features are welded to the art node, so they roll with Qoob and get squashed
+    // by the soft-body effect along with the rest of them. Placement is driven by
     // the symbol map rather than hard-coded, so the sculpt always agrees with
     // however `Level.startingFaces` assigns them.
 
@@ -540,9 +557,9 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // MARK: Coat roles
     //
     // Each piece of Qoob is tagged with what it *is* rather than what colour it
-    // currently has, so an appearance switch can re-tint him in place. Rebuilding
-    // him instead would drop his roll orientation and orphan the soft-body and fur
-    // effects, which hold references to his art node.
+    // currently has, so an appearance switch can re-tint them in place. Rebuilding
+    // instead would drop their roll orientation and orphan the soft-body and fur
+    // effects, which hold references to their art node.
 
     private enum CoatRole: String {
         case body, marking, skin, eye, whisker
@@ -550,11 +567,11 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     private func coatMaterial(_ role: CoatRole) -> PhysicallyBasedMaterial {
         switch role {
-        case .body:    return furMaterial(tint: CatCoat.body(appearance))
-        case .marking: return furMaterial(tint: CatCoat.marking(appearance))
-        case .skin:    return pbr(CatCoat.nose(appearance), roughness: 0.78)
-        case .eye:     return pbr(CatCoat.eye(appearance), roughness: 0.28)
-        case .whisker: return pbr(CatCoat.whisker(appearance), roughness: 0.5)
+        case .body:    return furMaterial(tint: CatCoat.body(catStyle))
+        case .marking: return furMaterial(tint: CatCoat.marking(catStyle))
+        case .skin:    return pbr(CatCoat.nose(catStyle), roughness: 0.78)
+        case .eye:     return pbr(CatCoat.eye(catStyle), roughness: 0.28)
+        case .whisker: return pbr(CatCoat.whisker(catStyle), roughness: 0.5)
         }
     }
 
@@ -577,9 +594,9 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     // MARK: Coat markings
     //
     // The three abstract symbols become markings in Qoob's coat — a spot, a ring
-    // and three spots — rather than glyphs stuck on him. They're shallow patches
+    // and three spots — rather than glyphs stuck on them. They're shallow patches
     // that hug the surface, so they read as fur colour from above and don't break
-    // his outline the way the old decal planes did.
+    // their outline the way the old decal planes did.
 
     private func sculptSpot(on panel: Entity) {
         panel.addChild(markingPatch(radius: 0.16, x: 0, y: 0))
@@ -668,7 +685,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// The head: a minimal face — two almond eyes and a small nose, nothing more.
     ///
     /// Deliberately sparse, following the plush: the previous version had a big
-    /// domed muzzle that swallowed the middle of the side and left him looking
+    /// domed muzzle that swallowed the middle of the side and left them looking
     /// snouted rather than cat-like.
     private func sculptFace(on panel: Entity) {
         for side in [Float(-1), 1] {
@@ -689,7 +706,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // is what makes a whisker a line instead of a smudge.
         //
         // They fan from beside the nose rather than from the outer edge of the side,
-        // so they stay on the flat of the face and don't wrap around his corner.
+        // so they stay on the flat of the face and don't wrap around their corner.
         for side in [Float(-1), 1] {
             for (i, dy) in [Float(0.02), -0.035, -0.09].enumerated() {
                 let whisker = coatPart(.generateBox(width: 0.26, height: 0.022, depth: 0.022,
@@ -701,33 +718,144 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         }
     }
 
-    /// The backside: just the tail, curling up over his back.
+    /// The backside: just the tail, curling up over their back.
     ///
     /// Haunches were tried here and removed. As broad shallow domes they competed
     /// with everything else on the side and read as grey ovals stuck on rather
     /// than as a cat. The tail alone says "rear end" immediately.
     private func sculptRump(on panel: Entity) {
-        // Closely-spaced overlapping segments, so it reads as one continuous curl
-        // rather than a dotted line. A tail is meant to extend past the body, so
-        // unlike the ears it can protrude freely without looking bolted on.
-        let segments = 14
-        for i in 0..<segments {
-            let t = Float(i) / Float(segments - 1)
-            let segment = coatPart(.generateSphere(radius: 0.062 * (1 - 0.5 * t)), .body)
-            // A hooked curl: out and up, then back over itself. It starts on the
-            // surface and lifts away from there, so the base is planted.
-            let angle = Float(t) * 2.4
-            let x = sin(angle) * (0.16 + 0.18 * t) * 0.9
-            let y = 0.10 + (1 - cos(angle)) * (0.16 + 0.18 * t) * 0.75
-            seat(segment, x: x, y: y, proud: 0.05 * t)
-            panel.addChild(segment)
+        // The tail is one swept tube: a single mesh, circular rings threaded along
+        // the curve and tapered base to tip.
+        //
+        // Two earlier attempts built it from separate solids — a line of small
+        // spheres, then a chain of ellipsoids stretched along the curve. Both read
+        // as corduroy: however much they overlapped, each solid showed its own
+        // silhouette and caught its own highlight, so the tail looked like a
+        // caterpillar or a spring. One mesh with shared normals has no joints to
+        // crease.
+        let samples = 16
+        let points = (0..<samples).map { tailPoint(Float($0) / Float(samples - 1)) }
+
+        if let mesh = tubeMesh(along: points, radius: tailRadius) {
+            let tail = coatPart(mesh, .body)
+            panel.addChild(tail)
         }
 
-        let pucker = coatPart(.generateSphere(radius: 0.05), .skin)
-        seat(pucker, x: 0, y: -0.05)
-        pucker.scale = f3(1, 1, 0.5)
-        panel.addChild(pucker)
+        // Rounded ends: the tube is open, and these are cheaper than capping it.
+        let tip = coatPart(.generateSphere(radius: tailRadius(1)), .body)
+        tip.position = points[samples - 1]
+        panel.addChild(tip)
+
+        let root = coatPart(.generateSphere(radius: tailRadius(0)), .body)
+        root.position = points[0]
+        panel.addChild(root)
+
+        // Three short, crossed stitches form the plush-style asterisk.
+        for angle in [Float(0), .pi / 3, -.pi / 3] {
+            let stitch = coatPart(
+                .generateBox(width: 0.14, height: 0.025, depth: 0.018,
+                             cornerRadius: 0.012),
+                .skin
+            )
+            seat(stitch, x: 0, y: -0.06, proud: 0.012)
+            stitch.orientation = quat(angle, f3(0, 0, 1))
+            panel.addChild(stitch)
+        }
     }
+
+    /// Sweeps a tapered circular tube along `points`.
+    ///
+    /// Rings are oriented by parallel transport rather than against a fixed world
+    /// axis: carrying the previous ring's orientation forward keeps the tube from
+    /// twisting where the curve turns, and avoids the degenerate case of a tangent
+    /// that happens to line up with the reference axis.
+    private func tubeMesh(along points: [SIMD3<Float>],
+                          radius: (Float) -> Float,
+                          sides: Int = 12) -> MeshResource? {
+        guard points.count >= 2 else { return nil }
+
+        // Central difference, so each ring faces along the curve rather than along
+        // one of the segments meeting at it.
+        let tangents: [SIMD3<Float>] = points.indices.map { i in
+            let previous = points[max(0, i - 1)]
+            let next = points[min(points.count - 1, i + 1)]
+            let delta = next - previous
+            return simd_length(delta) > 1e-6 ? simd_normalize(delta) : SIMD3<Float>(0, 1, 0)
+        }
+
+        var positions: [SIMD3<Float>] = []
+        var normals: [SIMD3<Float>] = []
+        positions.reserveCapacity(points.count * sides)
+        normals.reserveCapacity(points.count * sides)
+
+        // Seed the first ring's "up" from whichever world axis the tangent leans on
+        // least, so the cross product is well conditioned.
+        var reference: SIMD3<Float> = {
+            let t = tangents[0]
+            let seed: SIMD3<Float> = abs(t.x) < 0.9 ? SIMD3<Float>(1, 0, 0) : SIMD3<Float>(0, 0, 1)
+            return simd_normalize(seed - t * simd_dot(seed, t))
+        }()
+
+        for i in points.indices {
+            let tangent = tangents[i]
+            var normal = reference - tangent * simd_dot(reference, tangent)
+            if simd_length(normal) < 1e-5 {
+                let fallback = SIMD3<Float>(0, 0, 1)
+                normal = fallback - tangent * simd_dot(fallback, tangent)
+            }
+            normal = simd_normalize(normal)
+            reference = normal
+            let binormal = simd_cross(tangent, normal)
+
+            let r = radius(Float(i) / Float(points.count - 1))
+            for s in 0..<sides {
+                let angle = Float(s) / Float(sides) * 2 * .pi
+                let outward = normal * cos(angle) + binormal * sin(angle)
+                positions.append(points[i] + outward * r)
+                normals.append(outward)
+            }
+        }
+
+        var indices: [UInt32] = []
+        indices.reserveCapacity((points.count - 1) * sides * 6)
+        for i in 0..<(points.count - 1) {
+            for s in 0..<sides {
+                let next = (s + 1) % sides
+                let a = UInt32(i * sides + s)
+                let b = UInt32(i * sides + next)
+                let c = UInt32((i + 1) * sides + s)
+                let d = UInt32((i + 1) * sides + next)
+                // Counter-clockwise seen from outside, so the front faces point out.
+                // Reversed, the tube renders its interior and shows up black.
+                indices += [a, b, c, b, d, c]
+            }
+        }
+
+        var descriptor = MeshDescriptor(name: "tail")
+        descriptor.positions = MeshBuffer(positions)
+        descriptor.normals = MeshBuffer(normals)
+        descriptor.primitives = .triangles(indices)
+        return try? MeshResource.generate(from: [descriptor])
+    }
+
+    /// The tail's path across the rump, `t` running base (0) to tip (1).
+    ///
+    /// Rooted above the pucker, where a tail actually attaches, then sweeping up and
+    /// curling to one side while lifting away from the body — so from straight above
+    /// it reads as a tail rather than a line drawn on them.
+    private func tailPoint(_ t: Float) -> SIMD3<Float> {
+        let curl = t * 2.0                      // radians swept
+        let reach: Float = 0.30
+        let rootY: Float = 0.10
+        // The base starts *inside* the body, so the tube's open end and its plug are
+        // buried rather than sitting proud as a bump on the rump.
+        return SIMD3<Float>(sin(curl) * reach,
+                            rootY + (1 - cos(curl)) * reach * 1.1,
+                            surfaceDepth(x: 0, y: rootY) - 0.07 + 0.22 * t * t)
+    }
+
+    /// Thick at the base, fine at the tip.
+    private func tailRadius(_ t: Float) -> Float { 0.075 * (1 - 0.6 * t) }
 
     /// Four paw pads, so landing this side up genuinely reads as paws in the air.
     ///
@@ -832,7 +960,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// the coat is, so the black cat isn't rimmed back to grey.
     private func furMaterial(tint: UIColor? = nil) -> PhysicallyBasedMaterial {
         var m = PhysicallyBasedMaterial()
-        let tint = tint ?? CatCoat.body(appearance)
+        let tint = tint ?? CatCoat.body(catStyle)
 
         // A very faint speckle, so the coat isn't a dead flat fill.
         let albedo = BundledTextures.fur ?? ProceduralFur.albedo()

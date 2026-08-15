@@ -45,6 +45,16 @@ struct SettingsView: View {
                 }
 
                 Section("Appearance") {
+                    Picker("Cat", selection: $viewModel.catStyle) {
+                        ForEach(CatStyle.allCases) { style in
+                            Text(style.displayName).tag(style)
+                        }
+                    }
+                    Picker("Carpet mode", selection: $viewModel.roomAppearance) {
+                        ForEach(RoomAppearance.allCases) { appearance in
+                            Text(appearance.displayName).tag(appearance)
+                        }
+                    }
                     Picker("Floor", selection: $viewModel.floorTheme) {
                         ForEach(FloorTheme.allCases) { theme in
                             Text(theme.displayName).tag(theme)
