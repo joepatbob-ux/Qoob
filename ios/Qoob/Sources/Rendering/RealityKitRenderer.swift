@@ -213,35 +213,26 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// it instead of leaving it orphaned under `root`.
     private var rollPivot: Entity?
 
-    func clearTile(col: Int, row: Int, colorIndex: Int) {
+    /// A matched square goes straight back to being floor, with nothing left to
+    /// mark that it was ever a target.
+    ///
+    /// There was a flourish here — the tile flashed its colour, popped up, and the
+    /// highlight frame expanded and faded away. Two reasons it's gone. It isn't
+    /// wanted: a picked-up square shouldn't be marked. And the fade never worked
+    /// anyway, because the frame's endless pulser stayed attached and rewrote its
+    /// opacity every frame, fighting the animation that was trying to fade it out.
+    func clearTile(col: Int, row: Int) {
         let key = "\(col),\(row)"
-        let color = GamePalette.color(colorIndex)
 
         if let tile = tileEntities[key] {
-            // Flash the depiction, pop it up, then dissolve back to plain floor.
-            if var mat = tile.model?.materials.first as? PhysicallyBasedMaterial {
-                mat.emissiveColor = .init(color: color)
-                mat.emissiveIntensity = 0.6
-                tile.model?.materials = [mat]
-            }
-            let base = tile.position
-            animator.run(tile, duration: 0.30, ease: .linear, step: { e, t in
-                e.position = base + f3(0, Double(sin(Double(t) * .pi) * 0.10), 0)
-            }, completion: { [weak self, weak tile] in
-                guard let self, let tile else { return }
-                tile.position = base
-                tile.model?.materials = [self.neutralTileMaterial(col: col, row: row)]
-            })
+            tile.model?.materials = [neutralTileMaterial(col: col, row: row)]
         }
         if let ring = ringEntities[key] {
-            let base = ring.scale
-            animator.run(ring, duration: 0.35, ease: .easeOut, step: { e, t in
-                e.scale = base * (1 + 0.8 * t)
-                setUnlitOpacity(e, 1 - t)
-            }, completion: { [weak ring] in ring?.removeFromParent() })
+            animator.removePulsers(for: ring)
+            ring.removeFromParent()
             ringEntities[key] = nil
-            targetIndexByCell[GridCell(col: col, row: row)] = nil
         }
+        targetIndexByCell[GridCell(col: col, row: row)] = nil
     }
 
     func addTarget(col: Int, row: Int, colorIndex: Int) {
@@ -253,15 +244,16 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                 e.position = base + f3(0, Double(sin(Double(t) * .pi) * 0.06), 0)
             }, completion: { [weak tile] in tile?.position = base })
         }
-        ringEntities[key]?.removeFromParent()
+        if let existing = ringEntities[key] {
+            animator.removePulsers(for: existing)
+            existing.removeFromParent()
+        }
         addHighlight(col: col, row: row, index: colorIndex)
         targetIndexByCell[GridCell(col: col, row: row)] = colorIndex
-        if let ring = ringEntities[key] {
-            setUnlitOpacity(ring, 0)
-            animator.run(ring, duration: 0.3, ease: .easeOut, step: { e, t in
-                setUnlitOpacity(e, Float(t) * 0.9)
-            })
-        }
+
+        // No fade-in on the new highlight. It had one, and it did nothing: the
+        // frame's endless pulse sets its own opacity every frame, so it overwrote
+        // the fade on the very next tick.
     }
 
     func rejectRoll(_ direction: RollDirection) {

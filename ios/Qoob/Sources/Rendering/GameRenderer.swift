@@ -40,9 +40,9 @@ protocol GameRenderer: AnyObject {
                      duration: TimeInterval,
                      completion: @escaping () -> Void)
 
-    /// Play the "target satisfied" flourish for the tile at (col, row): the
-    /// depiction disappears and the cell returns to neutral floor.
-    func clearTile(col: Int, row: Int, colorIndex: Int)
+    /// The target at (col, row) has been satisfied: return the cell to neutral
+    /// floor. Nothing should be left marking that it was a target.
+    func clearTile(col: Int, row: Int)
 
     /// A fresh target has appeared: dress the neutral tile at (col, row) with
     /// the depiction and its pulsing highlight.

@@ -229,7 +229,7 @@ final class GameController {
             viewModel.score += 100 + bonus               // streak bonus
             viewModel.scoreMatches += 100
             viewModel.scoreStreak += bonus
-            renderer.clearTile(col: cube.col, row: cube.row, colorIndex: cube.downColorIndex)
+            renderer.clearTile(col: cube.col, row: cube.row)
             sfx { audio.playMatch(streak: streak - 1) }
             haptic { Haptics.match() }
             viewModel.flash(mantra: GamePalette.randomMantra())
