@@ -149,6 +149,13 @@ final class GameViewModel: ObservableObject {
     @Published var elapsed: TimeInterval = 0   // gentle count-up since the room began
     @Published var tilesRemaining: Int = 0
     @Published var itemsRemaining: Int = 0    // toys still loose on the floor
+
+    /// How many toys this house started with.
+    ///
+    /// Derived rather than stored: every toy is either still loose or has been returned,
+    /// and `toysPushed` only counts the returned ones (it increments on `collected`). So
+    /// the two always sum to the house's total, with no third state to keep in step.
+    var toysTotal: Int { itemsRemaining + toysPushed }
     @Published var mantra: String = ""
     @Published var showMantra: Bool = false
 

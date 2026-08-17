@@ -238,9 +238,16 @@ struct ContentView: View {
                     .minimumScaleFactor(0.6)
                     .fixedSize(horizontal: true, vertical: true)
             }
+            // Breathing room inside the pill. The glass background sizes itself to this
+            // label, so without it the capsule sat hard against the star on one side and
+            // the digits on the other — legible, but it read as cramped rather than as a
+            // deliberate pill. Asymmetric on purpose: the star carries its own optical
+            // margin, the digits don't.
+            .padding(.leading, 10)
+            .padding(.trailing, 12)
             // The label is 18pt tall, well under the 44pt minimum for a touch target,
             // and it opens the score breakdown — so it was a real control that was hard
-            // to hit. Height only: widening it would push into the clock beside it.
+            // to hit.
             .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
@@ -267,9 +274,15 @@ struct ContentView: View {
             if viewModel.scoreStreak > 0 {
                 breakdownRow("Streak bonus", value: viewModel.scoreStreak)
             }
-            if viewModel.toysPushed > 0 {
-                breakdownRow("Toys ×\(viewModel.toysPushed)", value: viewModel.scoreToys)
-            }
+            // Always shown, and as progress rather than a bare count. Returning toys to
+            // the basket is the standing objective of a house, so the breakdown is where
+            // you'd look to see how it's going — hiding the row until the first delivery
+            // meant it was absent exactly when you most wanted to know the total.
+            //
+            // `toysPushed` only increments on `collected`, so despite the name it counts
+            // toys actually *returned*, not shoves. The label now says so.
+            breakdownRow("Toys returned \(viewModel.toysPushed)/\(viewModel.toysTotal)",
+                         value: viewModel.scoreToys)
             if viewModel.knockoffs > 0 {
                 breakdownRow("Knock-offs ×\(viewModel.knockoffs)", value: viewModel.scoreKnockoffs)
             }
@@ -294,9 +307,15 @@ struct ContentView: View {
     }
 
     /// Optional "toys to push" bonus indicator.
+    ///
+    /// Hidden while the score breakdown is open. The breakdown hangs under the bar on the
+    /// leading side and reaches across this badge, and both are translucent glass — so the
+    /// two overlapped and the badge's text bled through the panel. Hiding rather than
+    /// moving because the breakdown now carries the same figure as "Toys returned n/total",
+    /// which makes the badge redundant at exactly the moment it's in the way.
     @ViewBuilder
     private var toysBadge: some View {
-        if viewModel.itemsRemaining > 0 {
+        if viewModel.itemsRemaining > 0 && !viewModel.showScoreBreakdown {
             HStack(spacing: 6) {
                 Image(systemName: "circle.fill")
                     .font(Self.hudFont(12))
