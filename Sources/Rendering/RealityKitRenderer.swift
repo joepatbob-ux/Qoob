@@ -1792,59 +1792,23 @@ final class RealityKitRenderer: NSObject, GameRenderer {
                                 modelName: String) -> (node: Entity, surface: Float)? {
         guard let loaded = loadModel(modelName) else { return nil }
         let bounds = loaded.visualBounds(relativeTo: nil)
-        let mw = bounds.extents.x, mh = bounds.extents.y, md = bounds.extents.z
-        guard mw > 0, mh > 0, md > 0 else { return nil }
 
-        // Footprints are randomly oriented (a sofa is 4×2 or 2×4) and a model pack has
-        // no consistent long axis — one sofa runs along X, a bed along Z. Turn the
-        // model a quarter so its own long side lies along the footprint's, otherwise a
-        // 4-cell sofa ends up sitting across its slot.
-        let modelLongOnX = mw >= md
-        let footprintLongOnX = piece.cols >= piece.rows
-        let longSwap = modelLongOnX != footprintLongOnX
-
-        // Quarter turns anticlockwise about Y. The long-axis alignment above is the
-        // fallback; where the piece has a front and the model shows which way that is, the
-        // turn comes from pointing the front along `facing` instead — which subsumes the
-        // long-axis fix, since a sofa's length runs across its front.
-        let allowW = Float(piece.cols) * cubeSize * furnitureOverhang
-        let allowD = Float(piece.rows) * cubeSize * furnitureOverhang
-        let byHeight = Float(piece.kind.height) / mh
-        /// The scale a given orientation would end up at, after the overhang clamp.
-        func scale(swapped: Bool) -> Float {
-            let footW = swapped ? md : mw
-            let footD = swapped ? mw : md
-            return min(byHeight, min(allowW / footW, allowD / footD))
-        }
-
-        var turns = longSwap ? 1 : 0
-        if piece.kind.hasFacing, let facing = piece.facing,
-           let back = modelBackAxis(loaded, name: modelName) {
-            let front = -back
-            let target = Self.boardVector(facing)
-            // Angles measured as atan2(x, z), where a rotation about +Y adds to the angle.
-            let delta = atan2(target.x, target.z) - atan2(front.x, front.z)
-            var q = Int((delta / (.pi / 2)).rounded()) % 4
-            if q < 0 { q += 4 }
-            // Honour it unless turning that way would make the overhang clamp bite: a
-            // piece drawn at the wrong height is a worse fault than one facing the wrong
-            // way, because the height is what Qoob climbs and what perched toys sit on.
-            //
-            // Comparing the resulting *scale* rather than just the axis parity matters.
-            // Refusing on parity alone threw the facing away for 18% of pieces, nearly all
-            // of them square — a 1×1 nightstand or a 3×3 armchair loses nothing by having
-            // its axes swapped, so there was never anything to protect.
-            if scale(swapped: q % 2 == 1) >= scale(swapped: longSwap) - 0.0001 { turns = q }
-        }
-        let quarterTurn = turns % 2 == 1
-
-        // Sized by height against Qoob — but not allowed to sprawl much past the cells
-        // it blocks. Anything more than a slight overhang starts covering floor the cat
-        // can stand on, and the cat standing on it: a bed scaled purely by height
-        // covers 3×4 cells, so blocking 2×3 left it draped over Qoob. The footprints in
-        // `Furniture.swift` are chosen to match these models at these heights, so this
-        // only bites when a model is swapped for one with different proportions.
-        let s = scale(swapped: quarterTurn)
+        // The sizing rule itself lives in Core so it can be tested without a renderer —
+        // it rejects a degenerate model itself, which is the signal to fall back to the
+        // placeholder block.
+        // see `ModelFit`. Only the part that needs the mesh stays here: which way the
+        // model's back points, which takes analysing where its tall mass sits.
+        guard let fit = ModelFit.fit(extents: bounds.extents,
+                                     cols: piece.cols, rows: piece.rows,
+                                     targetHeight: Float(piece.kind.height),
+                                     hasFacing: piece.kind.hasFacing,
+                                     facing: piece.facing,
+                                     modelBack: piece.kind.hasFacing
+                                        ? modelBackAxis(loaded, name: modelName) : nil,
+                                     cubeSize: cubeSize,
+                                     overhang: furnitureOverhang) else { return nil }
+        let turns = fit.quarterTurns
+        let s = fit.scale
 
         loaded.scale = SIMD3<Float>(repeating: s)
         // Centred on X/Z and resting on the floor.
@@ -1859,10 +1823,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         if turns != 0 {
             holder.transform.rotation = quat(Float(turns) * .pi / 2, f3(0, 1, 0))
         }
-        // Measured from the scale actually used, not from `kind.height` — the overhang
-        // clamp above can shave a piece down, and a perched toy has to sit on the
-        // surface that got drawn.
-        return (holder, mh * s)
+        return (holder, fit.surface)
     }
 
     // MARK: - Pushable toys
@@ -1985,14 +1946,6 @@ final class RealityKitRenderer: NSObject, GameRenderer {
 
     /// A board direction as a world vector. `col` runs along X and `row` along Z, so
     /// `.back` (increasing row, toward the viewer) is +Z.
-    private static func boardVector(_ direction: RollDirection) -> SIMD3<Float> {
-        switch direction {
-        case .right:   return SIMD3(1, 0, 0)
-        case .left:    return SIMD3(-1, 0, 0)
-        case .back:    return SIMD3(0, 0, 1)
-        case .forward: return SIMD3(0, 0, -1)
-        }
-    }
 
     /// Which way a model's back faces in its own space, as one of ±X / ±Z — or nil when
     /// the model is symmetric enough that it has no discernible front.
