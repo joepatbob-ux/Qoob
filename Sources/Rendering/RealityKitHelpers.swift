@@ -83,14 +83,7 @@ func loadTexture(_ image: UIImage?, semantic: TextureResource.Semantic) -> Textu
 /// this helper would make the existing call sites illegal.
 private func makeTexture(_ cg: CGImage,
                          options: TextureResource.CreateOptions) -> TextureResource? {
-    if #available(iOS 18.0, macCatalyst 18.0, tvOS 26.0, *) {
-        return try? TextureResource(image: cg, options: options)
-    }
-    #if os(tvOS)
-    return nil          // unreachable: tvOS starts at 26
-    #else
-    return try? TextureResource.generate(from: cg, options: options)
-    #endif
+    try? TextureResource(image: cg, options: options)
 }
 
 /// Image identity + semantic. `TextureResource.Semantic` isn't `Hashable`, so it
