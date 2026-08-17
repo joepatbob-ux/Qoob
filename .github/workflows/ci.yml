@@ -63,14 +63,30 @@ jobs:
       - name: Generate the project
         run: xcodegen generate
 
-      # OS=latest rather than a pinned 18.0: the runner carries whichever iOS 18.x
-      # simulator matches its Xcode, and a missing exact version fails the whole run.
+      # Resolve a simulator at runtime rather than naming one. Both CI failures so far
+      # were a pinned name going stale — first /Applications/Xcode_16.app, then
+      # "iPhone 16", which this image doesn't carry (it has the iPhone 17 family). Any
+      # available iPhone will do: the suites are pure model code and don't care which.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          udid=$(xcrun simctl list devices available -j \
+            | jq -r '.devices | to_entries[] | select(.key | test("iOS")) | .value[]
+                     | select(.name | test("iPhone")) | .udid' | head -1)
+          if [ -z "$udid" ]; then
+            echo "::error::No iOS iPhone simulator available on this runner."
+            xcrun simctl list devices available
+            exit 1
+          fi
+          echo "Using simulator $udid"
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+
       - name: Test
         run: |
           xcodebuild test \
             -project Qoob.xcodeproj \
             -scheme Qoob \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
 
