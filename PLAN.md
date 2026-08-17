@@ -121,12 +121,35 @@ never failed is not known to work.
 
 Gated on Phase 2b being green. Nothing here should change what the game does.
 
-| Target | Now | Action |
-|---|---|---|
-| `RealityKitRenderer.swift` | 2,813 lines | Split into `+Lighting`, `+Terrain`, `+Furniture`, `+Toys`, `+Materials`, `+ModelLoading` |
-| `Level.swift` | 1,600 lines | Split into generator / `HouseBlueprint` / `HouseLibrary` |
-| `SettingsView.swift` | 711 lines | Move the level builder out. It only lives there because new files were believed to be expensive — they aren't. |
-| `GameController` state | `Level!`, `BoardModel!`, `CubeState!` | One non-optional `Game` value set once, removing a latent-crash class. Every method already guards them. |
+| Target | Was | Action | Status |
+|---|---|---|---|
+| `SettingsView.swift` | 711 lines | Level builder out to `LevelBuilderView.swift` (now 132 lines) | ✅ |
+| `Level.swift` | 1,600 lines | Generator (1,060) / `HouseBlueprint.swift` (543) / `SeededGenerator.swift` (24) | ✅ |
+| `RealityKitRenderer.swift` | 2,813 lines | Material builders out to `RenderMaterials.swift` (2,679 lines left) | ◐ partial — see below |
+| `GameController` state | `Level!`, `BoardModel!`, `CubeState!` | One non-optional `Game` value set once | ⬜ |
+
+### Why the renderer is *not* being split by MARK section
+
+The original plan said `+Lighting`, `+Terrain`, `+Furniture` and so on. Having measured
+it, that's the wrong move: `RealityKitRenderer` has **65 private stored properties and
+92 private methods**, and an extension in another file cannot see `private` members. A
+section split would mean promoting most of that to module-wide visibility — trading a
+long file for no encapsulation, which is the worse of the two problems.
+
+What *can* come out is anything genuinely stateless or with a narrow interface. The
+material builders qualified (they map arguments to a material and touch nothing else)
+and have gone. Remaining candidate: model loading and its cache, which has state but a
+one-line interface (`name → Entity`) and would extract as a `ModelLibrary` type.
+
+That's a real design change rather than a cosmetic move, so it's listed as its own
+item rather than smuggled in under "refactor".
+
+### Verification for this phase
+
+Tests don't catch visual regressions, so each rendering change also gets a device
+screenshot. After the material extraction: floor tiling, wall materials, the unlit
+target pad and toys all correct, with no UV-transform bleed or leftover emission —
+which are the two specific bugs the `reset*` helpers exist to prevent.
 
 **Acceptance per step:** build + full suite green + one device screenshot. Tests
 won't catch visual regressions, so the screenshot isn't optional.
