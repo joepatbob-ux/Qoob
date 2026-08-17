@@ -101,7 +101,7 @@ belongs in one place.
   RealityKit, asset catalogue or device. The real models were verified once by hand
   over 400 combinations (see `3e64290`).
 
-Bugs that were found by hand and are currently unprotected:
+Bugs that were previously found by hand and are now pinned by the sweeps above:
 
 - rooms sealed by furniture across a doorway (9 houses in 200)
 - a pit you could drop into and not climb out of
@@ -111,13 +111,25 @@ Bugs that were found by hand and are currently unprotected:
 - model variants clumping — three identical armchairs in 16% of rooms
 - a weak cell hash: 62% neighbour correlation against 25% ideal
 
-**Acceptance, two parts.** `xcodebuild test` green — and then deliberately
-reintroduce two of the bugs above and confirm the suite goes red. A test that has
-never failed is not known to work.
+**Acceptance met, both parts.** Green, and mutation-tested rather than assumed:
+
+- Injecting a box onto a doorway turned `no furniture sits on a doorway` red in all
+  240 houses — and also tripped `same seed, same house`, because the injection keyed
+  off `Set.first` and so reproduced the very Set-ordering instability that test pins.
+- Dropping the floor-level requirement from `canHoldToy` turned the toy-path test red
+  with 349 issues.
+- One mutation did **nothing**: disabling the doorway guard in `fits` left the suite
+  green, so something downstream already prevents it and that guard is unverifiable
+  belt-and-braces. Recorded rather than removed — and a reminder that a mutation that
+  fails to fail is information, not a formality.
+
+Two of the suites' assertions were wrong on the first attempt and the code was right
+both times (see `55844ee`, `546ac9d`). Worth remembering: a new failing test is not
+evidence the code is broken.
 
 ---
 
-## Phase 3 — Behaviour-preserving refactors
+## Phase 3 — Behaviour-preserving refactors ✅
 
 Gated on Phase 2b being green. Nothing here should change what the game does.
 
@@ -126,7 +138,7 @@ Gated on Phase 2b being green. Nothing here should change what the game does.
 | `SettingsView.swift` | 711 lines | Level builder out to `LevelBuilderView.swift` (now 132 lines) | ✅ |
 | `Level.swift` | 1,600 lines | Generator (1,060) / `HouseBlueprint.swift` (543) / `SeededGenerator.swift` (24) | ✅ |
 | `RealityKitRenderer.swift` | 2,813 lines | Material builders out to `RenderMaterials.swift` (2,679 lines left) | ◐ partial — see below |
-| `GameController` state | `Level!`, `BoardModel!`, `CubeState!` | One non-optional `Game` value set once | ⬜ |
+| `GameController` state | `Level!`, `BoardModel!`, `CubeState!` | One `Game?` holding all three non-optionally | ✅ |
 
 ### Why the renderer is *not* being split by MARK section
 
