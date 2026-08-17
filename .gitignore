@@ -1,26 +1,14 @@
-# Ignore generated WAV files in root directory
-/*.wav
+# Xcode / XcodeGen generated
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
 
-# Ignore generated JSON extraction data
-/*.json
-/*.m3u
-/*.csv
+# Swift Package Manager
+.build/
+.swiftpm/
 
-# Python cache
-__pycache__/
-*.py[cod]
-*$py.class
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS files
+# macOS
 .DS_Store
-Thumbs.db
-
-# Ignore original game files
-rloops/
-ELVRL/

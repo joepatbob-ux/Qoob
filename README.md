@@ -1,408 +1,332 @@
-# Endorfun Game Engine - Complete Project Documentation
+# Qoob — a cube-cat tilt-and-roll puzzle for iOS
 
-## Executive Summary
+A calm, meditative rolling-puzzle game starring a **cube-cat**: a die whose six
+faces each depict a part of the cat. You roll it around a grid — by **tilting
+your iPhone/iPad** (gyroscope), swiping, or the on-screen D-pad — to land the
+**pictured side face-down** on each glowing target tile. Clear every target at
+your own pace — **there is no time limit**; a gentle clock only counts up so
+per-level best times stay meaningful. Gentle affirmations and a procedural
+ambient soundtrack accompany each match.
 
-This project represents a comprehensive reverse-engineering and audio extraction system for the Endorfun game engine ELV files. The project provides **2 essential tools** that successfully extract and generate audio while preserving the original artistic intent of level designers through proper sequence ordering.
+**The cube-cat's six faces** (see `Core/CatSymbols.swift`, drawn procedurally so
+no image assets are needed yet):
 
-### Key Achievements
-- **Complete reverse-engineering** of Endorfun game engine audio system
-- **Critical sequence order bug fix** - preserved original artistic vision 
-- **42 ELV files processed** with 467 audio references (100% success rate)
-- **49.8 minutes** of total audio content extracted
+| Face | Depiction |
+|------|-----------|
+| front | the cat's **face** |
+| up | the **butt** |
+| down | **4 paws** |
+| left | a single **dot** |
+| right | a **ring** |
+| back | **three dots** in a triangle |
 
----
+Each tile shows the depiction you must roll onto it; the puzzle is tracking the
+cat's orientation so the right side ends up on the bottom.
 
-## 🎯 Essential Tools & Usage
+This is an **original game inspired by** the 1995 game *Endorfun* — its
+cube-on-a-grid colour-matching feel and meditative tone. It contains **none** of
+Endorfun's code, levels, art, or audio. See "Relationship to the reverse
+engineering repo" below.
 
-### Core Python Scripts
+## Stack
 
-#### [`sequence_preserving_music_generator.py`](sequence_preserving_music_generator.py) ⭐ **PRIMARY TOOL**
-- **Purpose**: Generate backing tracks using original ELV sequence order
-- **Usage**: `python sequence_preserving_music_generator.py LEVEL.ELV [duration]`
-- **Features**:
-  - Direct ELV file parsing (no intermediate files needed)
-  - Preserves original ELV binary sequence order
-  - Matches C code's `current_track++` sequential advancement
-  - Multi-format WAV support (8/16-bit, mono/stereo)
-- **Output**: `*_sequence_preserved_*s.wav`
+- **SwiftUI** — app shell + HUD (score, timer, tiles-left, mantras, menus)
+- **SceneKit** — 3D board, cube, lighting, roll animation
+- **CoreMotion** — gyroscope/gravity → discrete roll direction
+- **AVAudioEngine** — fully procedural ambient pad + pentatonic match bells
+  (zero audio asset files)
 
-#### [`elv_sequence_report_generator.py`](elv_sequence_report_generator.py) ⭐ **ANALYSIS TOOL**
-- **Purpose**: Generate comprehensive reports for all ELV files
-- **Usage**: `python elv_sequence_report_generator.py`
-- **Features**:
-  - Complete ELV parsing logic built-in
-  - Analyzes all 42 ELV files with metadata
-  - Creates individual detailed reports per level
-  - Shows audio sequences in original ELV binary order
-- **Output**: Individual reports + comprehensive summary
+No third-party dependencies.
 
-### Configuration Files
-- [`requirements.txt`](requirements.txt) - Python dependencies
+## Build & run
 
-## 📦 Setup & Installation
+You need a Mac with **Xcode 15+** and, to actually tilt-and-roll, a **real
+device** (the Simulator has no gyroscope — the menu will warn you and you can
+still see the board).
 
-### Prerequisites
-You must own a legal copy of the original Endorfun game to use these tools.
-
-### Required Game Files
-Before using the tools, you need to copy the following directories from your original Endorfun game disk/installation to this project directory:
-
-- **`ELVRL/`** - Contains all 42 ELV level files (BEGINNER.ELV, ONESONG.ELV, etc.)
-- **`rloops/`** - Contains all 277 WAV audio files (rhythm tracks)
-
-**⚠️ Copyright Notice**: These game asset directories are **not included** in this repository as they are protected by copyright. You must provide your own legal copy of the original game files.
-
-### Python Dependencies
-```bash
-pip install -r requirements.txt
-```
-### Required Data Extraction Step
-**⚠️ IMPORTANT**: Before using the music generation tools, you must first extract the ELV data:
+### Option A — XcodeGen (recommended)
 
 ```bash
-python sequence_preserving_elv_extractor.py
+brew install xcodegen        # once
+cd ios/Qoob
+xcodegen generate
+open Qoob.xcodeproj
 ```
 
-This script:
-- Parses all 42 ELV files in the `ELVRL/` directory
-- Extracts audio sequence data while preserving original binary order
-- Generates the necessary data files that the music generator and report tools depend on
-- **Must be run once** before using other tools
+Select your device, set your signing team on the `Qoob` target
+(Signing & Capabilities), and Run.
 
-### Verification
-After copying the game directories, your project structure should look like:
-```
-endorfun/
-├── ELVRL/          # ← Copy from original game
-├── rloops/         # ← Copy from original game
-├── sequence_preserving_music_generator.py
-├── elv_sequence_report_generator.py
-└── ... (other project files)
-```
+### Option B — no extra tools
 
----
----
+1. In Xcode: **File ▸ New ▸ Project… ▸ iOS ▸ App**. Name it `Qoob`,
+   Interface **SwiftUI**, Language **Swift**.
+2. Delete the template's `ContentView.swift` and `*App.swift`.
+3. Drag the `Sources/App`, `Sources/Game`, `Sources/Motion`, and
+   `Sources/Audio` folders into the project (check *Copy items if needed* and
+   *Create groups*).
+4. Either use the generated Info.plist and add **Portrait** orientation, or set
+   the target's **Info.plist File** build setting to
+   `Sources/Resources/Info.plist`.
+5. Run on a device.
 
-## 🎵 Critical Problem Solved: Audio Sequence Order
+## Controls
 
-### The Problem
-The original music generation system was playing audio files in **alphabetical order** instead of the **original sequence order** from the ELV binary data, destroying the artistic intent of level designers.
+Three schemes, usable in any combination (toggle them on the menu or the
+in-game chips):
 
-### Root Cause
-Previous extraction systems didn't preserve the order that audio files appeared in the ELV binary data. When audio files were processed, they were inadvertently sorted alphabetically, breaking the intended musical progression.
+- **Tilt** (real device only) — tilt right/left rolls right/left; tilt the top
+  of the device away from you rolls forward (up the board), toward you rolls
+  back. Whatever pose you hold when a level starts becomes "flat/neutral", so it
+  works lying down or sitting up, and a held tilt keeps rolling one cell at a
+  time.
+- **Buttons** — an on-screen D-pad.
+- **Swipe** — swipe anywhere on the board in a direction; always active.
 
-### Solution & Evidence
+On the Simulator (no gyroscope) tilt is disabled automatically and you play with
+buttons/swipes.
 
-**BEGINNER.ELV Example:**
-- **Original ELV Order (Fixed)**: 620RHYTH.WAV → 619RHYTH.WAV → 621RHYTH.WAV
-- **Alphabetical Order (Broken)**: 619RHYTH.WAV → 620RHYTH.WAV → 621RHYTH.WAV
+## How to play
 
-**ONESONG.ELV Example:**
-- **Original ELV Order (Fixed)**: 403RHYTH.WAV → 427RHYTH.WAV → 401RHYTH.WAV → 402RHYTH.WAV...
-- **Alphabetical Order (Broken)**: 401RHYTH.WAV → 402RHYTH.WAV → 403RHYTH.WAV → 404RHYTH.WAV...
+Roll the cat so the depiction on its **bottom** face matches the picture on a
+glowing target tile — that clears it. The **FIND** legend at the top shows the
+depictions still needed this level. Clear every target — take as long as you like.
+Consecutive matches build a streak (higher score + a rising bell). Every roll
+and match gives light haptic feedback, and the cat gently "breathes" while you
+think.
 
-### Technical Implementation
-The fix implements sequence preservation through:
-1. **Extraction Phase**: Added `sequence_position` and `binary_offset` tracking
-2. **Music Generation**: Sort by `sequence_position` instead of filename
-3. **Verification**: Display sequence positions `[0], [1], [2]...` for verification
-4. **C Code Alignment**: Matches original engine's `current_track++` behavior
+### If a tilt rolls the cube the wrong way
 
-```c
-// From endor_audio_system_extracted.c
-current_track++;  // Sequential advancement, no sorting
-if (current_track >= background_music_sequence.track_count) {
-    current_track = 0;  // Loop back to start
-}
-```
+Orientation math depends on how you hold the device. Two one-line toggles in
+`Sources/Motion/MotionManager.swift`:
 
----
-
-## 📋 ELV File Format Technical Specification
-
-### File Structure Overview
-
-The Endorfun game engine uses several magic byte sequences to identify different sections within level files:
-
-| Magic Bytes | Purpose | Description |
-|-------------|---------|-------------|
-| `ELVD` | Main Level Data Header | Primary identifier for level files |
-| `LVTL` | Level Title | Contains the level name/title text |
-| `LVDS` | Level Data Section | Alternative level data format |
-| `LVBN` | Level Binary | Binary level data section |
-
-### Binary File Format
-
-```
-Level File Format:
-┌─────────────────────────┐
-│ Header (8 bytes)        │
-│ ┌─────────────────────┐ │
-│ │ Magic: "ELVD" (4)   │ │
-│ │ Version: int16 (2)  │ │
-│ │ Reserved: (2)       │ │
-│ │ └─────────────────────┘ │
-├─────────────────────────┤
-│ Section Header (6 bytes)│
-│ ┌─────────────────────┐ │
-│ │ Magic: "LVTL" (4)   │ │
-│ │ Size: int16 (2)     │ │
-│ │ └─────────────────────┘ │
-├─────────────────────────┤
-│ Section Data            │
-│ (Variable length)       │
-├─────────────────────────┤
-│ Additional Sections...  │
-│ (LVBN, etc.)           │
-└─────────────────────────┘
+```swift
+var invertX = false   // flip if left/right are reversed
+var invertY = false   // flip if forward/back are reversed
+var threshold = 0.28  // lower = more sensitive
 ```
 
-### Level Loading Process
+## Architecture: engine-agnostic core + a renderer seam
 
-The main level loading function (`load_level_file`) follows this process:
-1. Open the level file
-2. Read 8-byte header containing ELVD magic and version
-3. Read 6-byte section header
-4. Validate ELVD magic bytes and minimum version (5)
-5. Load default resources (textures, sounds)
-6. Process LVTL (Level Title) section if present
-7. Handle alternative LVDS format if ELVD validation fails
-8. Load main level data (max size: 0xFD34 bytes)
-9. Process LVBN (Level Binary) section if present
-10. Handle version upgrades for older level files (5→6→7→8)
-11. **Parse embedded audio file references for dynamic loading**
-
-### Version Compatibility
-
-The level file format supports versioning with automatic upgrades:
-- **Version 5**: Base format
-- **Version 6**: Upgraded via `j_sub_41a910()`
-- **Version 7**: Upgraded via `j_sub_41aa00()`
-- **Version 8**: Current version, upgraded via `j_sub_41ab90()`
-
----
-
-## 🎮 Complete Level Catalog & Audio System
-
-### All 42 ELV Files Discovered
+The game is split so the **gameplay never depends on how it's drawn**. A
+`GameRenderer` protocol is the only contract between them:
 
 ```
-Complete ELVRL Level Catalog:
-┌─────────────────────────────────────────────────┐
-│ BEGINNER LEVELS                                 │
-├─────────────────────────────────────────────────┤
-│ BEGINNER.ELV   - Primary first level           │
-│ BEGINER2.ELV   - Second beginner level         │
-├─────────────────────────────────────────────────┤
-│ CORE GAMEPLAY LEVELS                            │
-├─────────────────────────────────────────────────┤
-│ ALLWELL.ELV    DESIRE.ELV     LAGOS2.ELV        │
-│ BONUS.ELV      FIRST.ELV      LFF.ELV           │
-│ FLUTEFVR.ELV   MAGIC.ELV      NEWCLRS1.ELV      │
-│ FLUTETHG.ELV   NEWLOOPS.ELV   ONESONG.ELV       │
-│ FOCUS.ELV      RAOUL.ELV      SLOE.ELV          │
-│ IAMFREE.ELV    SPIRIT.ELV     SYNTH.ELV         │
-│ IBO.ELV        TILT.ELV       XCELENT.ELV       │
-│ XTC.ELV        ZOOOOM.ELV                       │
-├─────────────────────────────────────────────────┤
-│ ADVANCED/EXPERT LEVELS                          │
-├─────────────────────────────────────────────────┤
-│ H-Prefix Series (High Difficulty):              │
-│ HALSTEST.ELV   HKARMA1.ELV    HPURIST.ELV       │
-│ HEARTSDE.ELV   HKARMA2.ELV    HROCKIN3.ELV      │
-│ HENDLESS.ELV   HLIFEF.ELV     HROCKIN4.ELV      │
-│ HMED2.ELV      HSEPARAT.ELV   HUPBT2.ELV        │
-│ HUPBT3.ELV     HUPBT4.ELV                       │
-├─────────────────────────────────────────────────┤
-│ DEMONSTRATION/SPECIAL LEVELS                    │
-├─────────────────────────────────────────────────┤
-│ TWIDEMO.ELV    - Tutorial/demo level            │
-│ TWIDEMO2.ELV   - Second demo level              │
-│ TRUHART2.ELV   - Special content                │
-└─────────────────────────────────────────────────┘
+GameController (orchestrator, no rendering imports)
+     │  owns BoardModel + CubeState, timer, scoring, input, audio, haptics
+     │
+     ▼  drives, via the protocol:
+GameRenderer  ──►  present(level:board:cube:)          build visuals
+                   animateRoll(_:to:duration:completion:)  animate one roll
+                   clearTile(col:row:colorIndex:)      tile flourish
+     ▲
+     └── SceneKitRenderer  (the current implementation; Metal-backed)
 ```
 
-### Audio Library Organization (277 Total Files)
+- **`Core/`** imports no rendering engine at all — it's the whole game as data
+  and rules (`CubeState` face model + roll permutation, `BoardModel` matching,
+  `Level` generation, palette).
+- **`Rendering/`** is the only place SceneKit lives. Everything visual —
+  meshes, materials, camera, lights, the pivot-edge roll animation — is here.
 
-**Organizational Categories:**
-1. **Two-Digit Series** (55 files): `01RHYTH.WAV` to `97RHYTH.WAV`
-   - Purpose: Early/basic level content
-   - Pattern: Curated selection, not sequential
+**Why this matters for detailed 3D models / a possible Metal move:**
 
-2. **Three-Digit Series** (207 files): `100RHYTH.WAV` to `999RHYTH.WAV`
-   - **100s Series**: 21 files (tutorial/introduction)
-   - **300s Series**: 32 files (early gameplay)  
-   - **400s Series**: 35 files (core gameplay)
-   - **500s Series**: 45 files (advanced gameplay)
-   - **600s Series**: 27 files (expert gameplay)
-   - **700s Series**: 18 files (master gameplay)
-   - **900s Series**: 29 files (special/finale)
+- *Detailed models now, still on SceneKit:* edit only `SceneKitRenderer.swift`.
+  Swap `makeCubeNode`'s `SCNBox` for a node loaded from a USDZ/OBJ
+  (`SCNScene(named: "cube.usdz")`), keeping the six face materials in the
+  SCNBox order; do the same for tiles. Nothing in `Core/` or `GameController`
+  changes. (SceneKit already renders through Metal — you don't need raw Metal
+  for detailed models.)
+- *Switch engines later:* write one new type conforming to `GameRenderer`
+  (e.g. `RealityKitRenderer` or a custom `MetalRenderer`) and construct it in
+  `GameView.makeUIView` instead of `SceneKitRenderer`. The core is untouched.
 
-3. **Letter-Based Series** (8 files): `ARHYTH.WAV`, `CRHYTH.WAV`, etc.
-   - Available letters: A, C, D, E, F, H, I, K
-   - Purpose: Special/bonus content
-
-4. **System Files** (4 files):
-   - `!93RHYT.WAV`, `!102RHYT.WAV`, `!200RHYT.WAV` - Default system rhythms
-   - `NOSOUND.WAV` - Silence/null audio
-
-### Audio Progression Model
+## Project layout
 
 ```
-Audio Progression System:
-┌─────────────────────────────────────────────────┐
-│ DIFFICULTY PROGRESSION                          │
-├─────────────────────────────────────────────────┤
-│ 01-97:    Tutorial/Basic (selective)           │
-│ 100-199:  Introduction (21 files)              │
-│ 300-399:  Early Game (32 files)                │
-│ 400-499:  Core Game (35 files)                 │
-│ 500-599:  Advanced Game (45 files)             │
-│ 600-699:  Expert Game (27 files)               │
-│ 700-799:  Master Game (18 files)               │
-│ 900-999:  Special/Finale (29 files)            │
-├─────────────────────────────────────────────────┤
-│ A-K:      Bonus/Special Levels (8 files)       │
-│ !xxx:     System Defaults (3 files)            │
-│ NOSOUND:  Silence (1 file)                     │
-└─────────────────────────────────────────────────┘
+Sources/
+  App/
+    QoobApp.swift      @main entry point
+    ContentView.swift      SwiftUI HUD + menus + D-pad
+  Core/                    ← no rendering-engine imports
+    CoreTypes.swift        Face, RollDirection, GridCell, CubeState (roll math)
+    BoardModel.swift       grid + symbol-match logic
+    Level.swift            procedural level gen + furniture + reachability
+    Furniture.swift        living-room obstacle model (kinds, footprints)
+    CatSymbols.swift       the six cube-cat depictions + generated textures
+    GamePalette.swift      accent colours + mantras
+    ProgressStore.swift    best times/scores per level (UserDefaults)
+  Rendering/               ← the ONLY place SceneKit lives
+    GameRenderer.swift     the renderer protocol (the seam)
+    SceneKitRenderer.swift SceneKit implementation (meshes, camera, animation)
+    SceneKitHelpers.swift  SCNVector3 convenience
+    BundledTextures.swift  optional asset-catalog textures (fur/carpet/art)
+  Game/
+    GameController.swift   orchestrator: state, loop, timer, scoring, input
+    GameView.swift         SwiftUI ⇄ renderer bridge + swipe gestures
+    GameViewModel.swift    observable state for the HUD
+    Haptics.swift          light roll/match feedback
+  Motion/
+    MotionManager.swift    CoreMotion tilt → RollDirection
+  Audio/
+    AudioEngine.swift      procedural ambient pad + match bells
+  Resources/
+    Info.plist
+project.yml                XcodeGen spec
 ```
 
----
+## Adding your own textures (fur, carpet, face art)
 
-## 🔧 Complete Game Engine Source Code
+The renderer loads optional textures from `Sources/Resources/Assets.xcassets`
+and **falls back to the procedural look when they're absent** — so the empty
+image slots are already there; just drop PNGs in (Xcode ▸ select the image set ▸
+drag your PNG onto the 1×/2×/3× well). No code change needed.
 
-### Core Engine Files
-- **[`endor.c`](endor.c)** ⭐ **ORIGINAL SOURCE** - Complete decompiled game engine
-- **[`endor_readable.h`](endor_readable.h)** - Header declarations and function prototypes
-- **[`endor_complete.c`](endor_complete.c)** - Complete implementation with full functionality
-- **[`endor_complete_clean.c`](endor_complete_clean.c)** - Cleaned/simplified complete implementation
+| Asset name | Used for | Fallback if empty |
+|------------|----------|-------------------|
+| `fur_albedo` | cat body, **tinted per face** by the face colour | flat accent colour |
+| `fur_normal` | cat body surface relief | none |
+| `carpet_albedo` | the floor (board tiles + ground), tiled seamlessly | flat neutral colour |
+| `carpet_normal` | floor surface relief | none |
+| `cat_face`, `cat_butt`, `cat_paws`, `cat_dot`, `cat_ring`, `cat_triangle` | per-face emblem art | the procedural glyph |
 
-### Modular Subsystem Files
-- **[`endor_audio_system.c`](endor_audio_system.c)** - Audio system implementation
-- **[`endor_audio_system_extracted.c`](endor_audio_system_extracted.c)** ⭐ **AUDIO REFERENCE**
-  - Contains `queue_rhythm_loop()`, `advance_background_track()` functions
-  - Shows `current_track++` sequential playback (critical for sequence preservation)
-- **[`endor_game_logic.c`](endor_game_logic.c)** - Core game mechanics and logic
-- **[`endor_graphics_system.c`](endor_graphics_system.c)** - Graphics rendering and display
-- **[`endor_input_system.c`](endor_input_system.c)** - Input handling and controls
-- **[`endor_level_editor.c`](endor_level_editor.c)** - Level editing functionality
-- **[`endor_network_system.c`](endor_network_system.c)** - Network and multiplayer features
+Notes:
+- Make `fur_albedo` a **greyish** fur — it's multiplied by each face's accent
+  colour, so grey fur becomes ginger/pink/teal/… per face. A pre-coloured fur
+  will look over-saturated.
+- Carpet should be **seamless/tileable**; each board cell offsets the texture by
+  its grid coordinates so a seamless pattern flows unbroken across the floor.
+- For real surface depth, add the `*_normal` maps (derive them from the albedo
+  with a free tool like Materialize or NormalMap-Online).
+- `cat_*` art should be a centred emblem (transparent background reads best, so
+  the fur/colour shows around it). It replaces only the glyph, not the whole
+  face.
+- Tiling density is set in `bodyMaterial` / `addGround` (`SCNMatrix4MakeScale`),
+  easy one-line tweaks.
 
----
+The **app icon** is a generated placeholder (`AppIcon.appiconset/icon_1024.png`)
+— replace it with your own 1024×1024 PNG when ready. The cat casts a soft
+shadow onto the floor (tune `shadowRadius` / `shadowColor` in `setupLighting`).
 
-## 🏆 Project Results & Technical Achievements
+## Environments
 
-### Technical Achievements
-- ✅ **Complete Reverse Engineering**: Endorfun game engine completely reverse-engineered
-- ✅ **Sequence Preservation**: Original artistic intent maintained  
-- ✅ **100% Success Rate**: All 42 ELV files processed successfully
-- ✅ **Complete Audio Library**: 467 audio references, 277 unique files
-- ✅ **Format Documentation**: Complete ELV binary format specification
-- ✅ **Modular Architecture**: Game engine broken into logical subsystems
+Levels are themed and cycle as you progress (`Environment.swift`):
+**Living Room → Kitchen → Bedroom → Yard**, changing every 3 levels. Each sets
+its floor colour, ground colour, backdrop mood, and furniture set (living room:
+sofa/coffee table/armchair · kitchen: counter/dining table/fridge · bedroom:
+bed/dresser/nightstand · yard: garden bench/bush/planter). The current
+environment is shown on the menus. Drop a `floor_<env>` PNG (e.g.
+`floor_kitchen`) into `Assets.xcassets` to texture that floor; otherwise the
+environment's colour is used.
 
-### Data Processing Results
-- **42 ELV files** successfully processed (100% success rate)
-- **467 total audio references** extracted from all levels
-- **277 unique audio files** available in rloops directory
-- **49.8 minutes** of total audio content across all levels
-- **Complexity range**: From simple (MAGIC.ELV: 2 files) to complex (ONESONG.ELV: 26 files)
+## The living room (top-down + obstacles)
 
-### Architecture Benefits
-- **Direct parsing**: No intermediate JSON files needed
-- **Sequence preservation**: Maintains original artistic vision
-- **Self-contained tools**: Built-in parsing logic
-- **Clean workflow**: Simple command-line usage
-- **Complete engine**: Full game engine reverse-engineered into modular components
+The camera is near **top-down**, looking down at the floor with a slight lean so
+furniture keeps some dimension (tune `topDownTilt` in `SceneKitRenderer`). Each
+environment's floor is scattered with **furniture obstacles** the cat must roll
+around (`Furniture.swift`).
 
----
+- Furniture cells are **impassable**: `Level.generate` places pieces, records
+  their cells in `blocked`, and `GameController` refuses rolls into them
+  (`BoardModel.passable`).
+- **Always solvable**: generation flood-fills the region the cube can actually
+  reach around the furniture and places targets *only* there, and it rejects any
+  furniture layout that would wall off more than a third of the floor.
+- Furniture renders as stylised placeholder boxes (sofa/armchair get a back
+  cushion). Drop `sofa.usdz` / `coffee_table`… no — the model name is the kind's
+  raw value: **`sofa.usdz`, `coffeeTable.usdz`, `armchair.usdz`, `rugChest.usdz`**
+  (`.usdc`/`.scn` also work) into the project and it's used in place of the
+  placeholder, scaled to the piece's footprint.
 
-## 🔄 Workflow & Usage Examples
-### Step 1: Extract ELV Data (Run Once)
-```bash
-python sequence_preserving_elv_extractor.py
-```
+### Pushable toys (bonus points)
 
-### Step 2: Generate Music
-```bash
-python sequence_preserving_music_generator.py LEVEL_NAME.ELV [duration]
-```
-**Examples:**
-```bash
-python sequence_preserving_music_generator.py BEGINNER.ELV 30
-python sequence_preserving_music_generator.py ONESONG.ELV 60
-python sequence_preserving_music_generator.py HUPBT4.ELV 45
-```
+Some floors have **yarn-ball toys** and glowing **pads**. Roll the cat into a
+toy to shove it one cell (Sokoban-style); land it on a pad for **+150** bonus
+points. Toys are optional — they never block winning — and each is generated so
+a single push solves it (item at goal−1, with a clear cell behind to push from).
+Pushing into a wall, furniture, or another toy is blocked. See
+`BoardModel` (item state), `GameController.requestRoll` (push resolution), and
+`SceneKitRenderer.moveItem` (the slide).
 
-### Step 3: Generate Reports (Optional)  
-```bash
-python elv_sequence_report_generator.py
-```
-**Output:**
-- Individual detailed reports for each level
-- Comprehensive summary with complexity rankings
-- Audio sequence analysis in original ELV order
+### Knock-off toys
 
-### Verification Examples
+From level 4 on, some toys start **perched on furniture** (`PerchedToy`). Roll
+the cat into that furniture and the toy **tumbles onto the floor** for **+100**,
+then becomes a normal pushable toy you can shove onto a pad. See
+`BoardModel.knockOff` and `SceneKitRenderer.knockOffToy`.
 
-**BEGINNER.ELV Generated Output:**
-```
-🎵 Audio sequence (as appeared in ELV binary data):
-  1. [ 0] NOSOUND.WAV (silence) - Skipping
-  2. [ 1] 620RHYTH.WAV (numbered_rhythm) - 5.9s, 255KB
-  3. [ 2] 619RHYTH.WAV (numbered_rhythm) - 7.7s, 333KB  
-  4. [ 3] 621RHYTH.WAV (numbered_rhythm) - 7.3s, 314KB
-```
+## Progression & records
 
-**ONESONG.ELV Generated Output:**
-```
-🎵 Audio sequence (as appeared in ELV binary data):
-  1. [ 0] NOSOUND.WAV (silence) - Skipping
-  2. [ 1] 403RHYTH.WAV (numbered_rhythm) - 3.9s
-  3. [ 2] 427RHYTH.WAV (numbered_rhythm) - 3.8s
-  4. [ 3] 401RHYTH.WAV (numbered_rhythm) - 5.3s
-  5. [ 4] 402RHYTH.WAV (numbered_rhythm) - 4.2s
-  ... (22 more files in original ELV order)
-```
+Levels are generated deterministically from their index, so each level is the
+same board every time — which makes per-level records meaningful. `ProgressStore`
+persists (in `UserDefaults`) the **best completion time** and **best score** per
+level and the highest level reached. The win screen shows your time, flags a
+"★ New best time!", and otherwise shows the best to beat. "Next level" advances
+the index; the difficulty (grid size, target count) scales with it
+in `Level.generate`.
 
----
+## Dropping in a 3D cat model
 
-## 📁 Project Structure
+The renderer looks for a bundled **`cube_cat.usdz`** (or `.usdc` / `.scn`); if
+present it's normalised to a unit cube, centred, and used as the cube body in
+place of the procedural box + decals. Add the file to the project (under
+`Sources/`, then re-run `xcodegen generate`) and it takes over automatically —
+no code change.
 
-```
-endorfun/
-├── ELVRL/                                    # ELV level files (42 files)
-├── sequence_preserving_elv_extractor.py     # ⭐ REQUIRED FIRST: Data extraction
-├── rloops/                                   # WAV audio files (277 files)
-├── sequence_preserving_music_generator.py   # ⭐ ESSENTIAL TOOL #1
-├── elv_sequence_report_generator.py         # ⭐ ESSENTIAL TOOL #2
-├── endor.c                                  # ⭐ Original decompiled game engine
-├── endor_complete.c                         # Complete implementation
-├── endor_complete_clean.c                   # Cleaned complete implementation
-├── endor_audio_system.c                     # Audio system module
-├── endor_audio_system_extracted.c          # Audio system reference
-├── endor_game_logic.c                       # Game mechanics module
-├── endor_graphics_system.c                  # Graphics rendering module
-├── endor_input_system.c                     # Input handling module
-├── endor_level_editor.c                     # Level editor module
-├── endor_network_system.c                   # Network/multiplayer module
-├── endor_readable.h                         # Header declarations
-├── requirements.txt                         # Python dependencies
-└── *_sequence_preserved_*.wav               # Generated music files
-**⚠️ Copyright Notice**: Directories `ELVRL/` and `rloops/` are **not included** in this repository due to copyright protection. You must copy these from your own legal copy of the original Endorfun game.
-```
+Important: the model must **depict the six faces in the layout from
+`Level.startingFaces`** (front = face, up = butt, down = 4 paws, left = dot,
+right = ring, back = three dots), so the rolling logic and the visible faces
+stay in agreement. Keep it inside a unit cube centred at the origin; rolling,
+matching, breathing and shadows keep working untouched.
 
----
+## The roll math (why the bottom face is always correct)
 
-## 🎯 Conclusion
+The cube tracks its six face colours logically and animates visually from the
+**same** `RollDirection`, so they never drift. Rolling permutes the faces
+exactly as a physical die (edge length 1, pivoting on the bottom edge). For a
+roll to the **right** (+X), a 90° rotation about the world Z axis gives:
 
-This project represents a complete success in reverse-engineering the Endorfun game engine. Key accomplishments include:
+| new face | takes colour of old |
+|----------|---------------------|
+| right    | up                  |
+| down     | right               |
+| left     | down                |
+| up       | left                |
 
-1. **Complete Understanding**: Full documentation of the ELV file format and game engine
-2. **Problem Identification**: Discovery and fix of the critical sequence order bug
-3. **Optimal Solution**: 2 essential tools that solve all audio extraction requirements
-4. **Artistic Preservation**: Maintained the original level designers' artistic vision
-5. **Technical Excellence**: Clean, well-documented, maintainable codebase
-6. **Complete Reverse Engineering**: Entire game engine broken into modular subsystems
+The other three directions are the same idea about the appropriate edge. The
+permutation lives in `CubeState.applyRoll` (`Core/CoreTypes.swift`); the visual
+animation lives in `SceneKitRenderer.animateRoll` (`Rendering/`), which
+re-parents the cube under a temporary pivot node placed at that bottom edge,
+rotates 90°, then bakes the transform back — so the cube tips over its edge
+rather than spinning in place, and snaps to the exact grid centre after each
+roll to avoid floating-point drift. Because both derive from the same
+`RollDirection`, the logical bottom face and the visible bottom face never
+diverge.
 
-**Final Result**: A comprehensive toolkit that not only generates authentic Endorfun game music while preserving the original creative vision, but also provides complete access to the reverse-engineered game engine for further research and development.
+## Ideas for where to take it next
+
+- Hand-designed levels / a level file format (instead of procedural).
+- Special tiles: multi-colour, teleporters, ice (keep rolling), holes.
+- Haptics on each roll and match (`UIImpactFeedbackGenerator`).
+- Save progress + best times per level (Endorfun recorded winning times).
+- Recorded spoken affirmations layered over the pad (Endorfun's real hook).
+- Game Center leaderboards.
+
+## Relationship to the reverse-engineering repo
+
+The parent repository reverse-engineered the original *Endorfun*. Two important
+findings shaped this project:
+
+1. The genuinely decoded artefacts there are the **ELV level-file audio
+   sequencing** and the **rhythm-loop soundtrack system** — the game's
+   meditative audio. The actual **tile-grid layout, win rule, and scoring
+   formula were never decoded** (they live in the opaque `.ELV` binary), and the
+   original level/audio assets are copyrighted and not present.
+2. Several of the "reconstructed" C modules (`endor_game_logic.c`,
+   `endor_input_system.c`, `endor_main.c`, `endor_level_editor.c`) are
+   **fabricated boilerplate describing a generic 3D shooter** — enemies,
+   weapons, projectiles — none of which is in Endorfun. They were **not** used
+   here.
+
+So Qoob is a clean-room, original reimagining of the *idea* (tilt-to-roll a
+colour cube on a grid, meditative tone) rather than a port. All colours, words,
+audio, and code are new.

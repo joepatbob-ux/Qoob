@@ -1,0 +1,56 @@
+#
+#  project.yml — XcodeGen spec for Qoob
+#
+#  Generate the Xcode project with:
+#      brew install xcodegen        # once
+#      cd ios/Qoob
+#      xcodegen generate
+#      open Qoob.xcodeproj
+#
+#  (See README.md for a no-tools alternative that just drags the Sources
+#   folder into a fresh Xcode "App" project.)
+#
+#  One target, several destinations: iPhone, iPad, Mac (via Catalyst) and Apple TV.
+#  The platform differences live in the sources behind `#if os(...)` — see
+#  MotionManager (no CoreMotion on tvOS), Haptics, ControllerInput and the
+#  touch-only sections of ContentView/GameControls.
+#
+#  Note the checked-in Qoob.xcodeproj is the one Xcode builds; this spec is kept in
+#  step with it so regenerating doesn't lose the multi-platform setup.
+#
+name: Qoob
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+    tvOS: "26.0"        # RealityKit's ARView only reached tvOS in 26
+  createIntermediateGroups: true
+
+targets:
+  Qoob:
+    type: application
+    supportedDestinations: [iOS, macCatalyst, tvOS]
+    sources:
+      - path: Sources
+        excludes:
+          - "Resources/Info.plist"
+      # Note: the bundled 3D models live inside Resources/Assets.xcassets as
+      # `Model_*.dataset` Data Sets, so they need no entry here (or in
+      # project.pbxproj) — the asset catalogue is a single folder reference and
+      # actool compiles whatever is inside it. See BUILD.md.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.qoob
+        PRODUCT_NAME: Qoob
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: Sources/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        # 1 = iPhone, 2 = iPad, 3 = Apple TV
+        TARGETED_DEVICE_FAMILY: "1,2,3"
+        SUPPORTS_MACCATALYST: YES
+        SWIFT_VERSION: "5.0"
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        DEVELOPMENT_TEAM: ""
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES
