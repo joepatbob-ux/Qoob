@@ -20,9 +20,23 @@ final class GameController {
     private let audio = AudioEngine()
 
     // Game state
-    private var board: BoardModel!
-    private var cube: CubeState!
-    private var currentLevel: Level!
+    /// The house being played, or nil before the first `startGame`.
+    ///
+    /// One optional rather than three implicitly-unwrapped ones. These are always set
+    /// together in `play(_:)` and there is no meaningful state where a board exists
+    /// without a cube — but three separate `!` properties could express exactly that,
+    /// and would have crashed rather than failed to compile if it ever happened. The
+    /// window is real: `init` starts the display link, so the tick can fire before any
+    /// house exists.
+    ///
+    /// `board` is a class, so it mutates through a `let` binding; `cube` is a struct, so
+    /// rolling it has to write back through `self.game`.
+    private struct Game {
+        let level: Level
+        let board: BoardModel
+        var cube: CubeState
+    }
+    private var game: Game?
     /// Set while a hand-built house is being played, so the litterbox lays the same
     /// house out again instead of generating a stranger.
     private var authored: HouseBlueprint?
@@ -83,15 +97,15 @@ final class GameController {
 
     /// The house being played, as something the level builder can edit.
     func currentBlueprint() -> HouseBlueprint? {
-        guard let currentLevel else { return nil }
-        return authored ?? HouseBlueprint(currentLevel, name: currentLevel.environment.displayName)
+        guard let level = game?.level else { return nil }
+        return authored ?? HouseBlueprint(level, name: level.environment.displayName)
     }
 
     private func play(_ level: Level) {
-        currentLevel = level
-        board = BoardModel(level: level)
-        cube = CubeState(col: level.startCol, row: level.startRow, level: 0,
-                         colors: Level.startingFaces())
+        let board = BoardModel(level: level)
+        let cube = CubeState(col: level.startCol, row: level.startRow, level: 0,
+                             colors: Level.startingFaces())
+        game = Game(level: level, board: board, cube: cube)
 
         renderer.applyFloorTheme(viewModel.floorTheme)
         renderer.setCatStyle(viewModel.catStyle)
@@ -206,7 +220,8 @@ final class GameController {
     // MARK: - Rolling (single entry point for the pad, swipes and controllers)
 
     func requestRoll(_ direction: RollDirection) {
-        guard viewModel.phase == .playing, let board = board, let cube = cube else { return }
+        guard viewModel.phase == .playing, let game else { return }
+        let (board, cube) = (game.board, game.cube)
         let now = CACurrentMediaTime()
         guard !isRolling, now >= nextRollAllowedAt else { return }
 
@@ -299,14 +314,14 @@ final class GameController {
         renderer.animateRoll(direction, to: target, toLevel: targetLevel,
                              duration: rollDuration) { [weak self] in
             guard let self = self else { return }
-            self.cube.applyRoll(direction)          // logical state follows the visual roll
-            self.cube.level = targetLevel
+            self.game?.cube.applyRoll(direction)    // logical state follows the visual roll
+            self.game?.cube.level = targetLevel
             self.nextRollAllowedAt = CACurrentMediaTime() + self.restBetweenRolls
             self.resolveMatch()
             self.isRolling = false
             // Reaching the litterbox ends this house and opens the next one. Checked
             // after `resolveMatch` so a tile satisfied on the way in still scores.
-            if let box = self.currentLevel.litterbox, self.cube.cell == box {
+            if let game = self.game, let box = game.level.litterbox, game.cube.cell == box {
                 self.enterNewHouse()
             }
         }
@@ -314,7 +329,8 @@ final class GameController {
 
     /// Tests the tile under the cube; scores and rewards a match.
     private func resolveMatch() {
-        guard let board = board, let cube = cube else { return }
+        guard let game else { return }
+        let (board, cube) = (game.board, game.cube)
         let matched = board.tryMatch(col: cube.col, row: cube.row,
                                      downColor: cube.downColorIndex)
         if matched {
