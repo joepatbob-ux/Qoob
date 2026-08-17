@@ -54,3 +54,25 @@ targets:
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
+    scheme:
+      testTargets:
+        - QoobTests
+
+  # Unit tests over the pure model: Level generation, BoardModel, CubeState,
+  # Furniture and ModelFit. Deliberately no rendering — everything under test here
+  # runs without RealityKit, a view or a device, which is why Core keeps that
+  # boundary.
+  QoobTests:
+    type: bundle.unit-test
+    # iOS only. The suites are platform-independent, and adding Catalyst/tvOS
+    # destinations here just multiplies the ways the test bundle can fail to host.
+    supportedDestinations: [iOS]
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Qoob
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.qoob.tests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
