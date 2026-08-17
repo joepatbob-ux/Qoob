@@ -28,21 +28,34 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-15
+    # Needs Xcode 26 or newer, and not because of the deployment target — the app
+    # calls Liquid Glass (`Glass`, `glassEffect`) behind a runtime
+    # `#available(iOS 26.0, *)`. A runtime guard still needs the symbol to exist in
+    # the SDK at compile time, so Xcode 16 on macos-15 cannot build this at all.
+    runs-on: macos-26
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      # Deliberately the runner's default Xcode rather than a pinned path. macos-15
-      # ships Xcode 16.x, which is what iOS 18 and Swift Testing need, and the exact
-      # point releases on the image change over time — pinning /Applications/Xcode_16.app
+      # Deliberately the runner's default Xcode rather than a pinned path: exact point
+      # releases on an image change over time, and pinning /Applications/Xcode_26.app
       # breaks the moment that name isn't there.
       - name: Show toolchain
         run: |
           xcodebuild -version
           swift --version
           xcrun simctl list devices available | grep -i iphone || true
+
+      # Fail with a sentence rather than four pages of "cannot find 'Glass' in scope".
+      - name: Require Xcode 26+
+        run: |
+          major=$(xcodebuild -version | head -1 | sed -E 's/Xcode ([0-9]+).*/\1/')
+          echo "Xcode major version: $major"
+          if [ "$major" -lt 26 ]; then
+            echo "::error::Xcode $major is too old. Qoob calls Liquid Glass, which needs the iOS 26 SDK even though it ships to iOS 18."
+            exit 1
+          fi
 
       - name: Install XcodeGen
         run: brew install xcodegen
