@@ -48,7 +48,7 @@ still see the board).
 
 ```bash
 brew install xcodegen        # once
-cd ios/Qoob
+cd Qoob
 xcodegen generate
 open Qoob.xcodeproj
 ```

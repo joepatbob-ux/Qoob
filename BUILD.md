@@ -7,7 +7,7 @@
 
 ## Generate & open (recommended)
 ```bash
-cd ios/Qoob
+cd Qoob
 brew install xcodegen        # once
 xcodegen generate
 open Qoob.xcodeproj

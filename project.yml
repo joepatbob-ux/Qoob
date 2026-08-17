@@ -3,26 +3,26 @@
 #
 #  Generate the Xcode project with:
 #      brew install xcodegen        # once
-#      cd ios/Qoob
+#      cd Qoob
 #      xcodegen generate
 #      open Qoob.xcodeproj
 #
-#  (See README.md for a no-tools alternative that just drags the Sources
-#   folder into a fresh Xcode "App" project.)
+#  The generated Qoob.xcodeproj is NOT tracked (see .gitignore), so a fresh clone
+#  has to run xcodegen before there is anything to open. This spec is the single
+#  source of truth for the project layout and build settings.
 #
 #  One target, several destinations: iPhone, iPad, Mac (via Catalyst) and Apple TV.
-#  The platform differences live in the sources behind `#if os(...)` — see
-#  MotionManager (no CoreMotion on tvOS), Haptics, ControllerInput and the
-#  touch-only sections of ContentView/GameControls.
-#
-#  Note the checked-in Qoob.xcodeproj is the one Xcode builds; this spec is kept in
-#  step with it so regenerating doesn't lose the multi-platform setup.
+#  The platform differences live in the sources behind `#if os(...)` — see Haptics,
+#  ControllerInput and the touch-only sections of ContentView/GameControls.
 #
 name: Qoob
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
-    iOS: "17.0"
+    # iOS 18 so image-based lighting needs no fallback: building an
+    # EnvironmentResource from a runtime image requires 18, and the older
+    # generate(fromEquirectangular:) is unavailable rather than deprecated.
+    iOS: "18.0"
     tvOS: "26.0"        # RealityKit's ARView only reached tvOS in 26
   createIntermediateGroups: true
 

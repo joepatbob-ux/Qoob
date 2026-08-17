@@ -506,9 +506,8 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // shadow-casters would mean more hard-edged shadows, which is the opposite of
         // what's wanted — they're here to *fill* the key's shadow, not to add their own.
         //
-        // Set low and coming from several sides, they behave like bounce off walls. That
-        // approximation is all there is on iOS 16 and 17, where there's no environment
-        // map to be had; `fillScale` turns them up to carry the ambient there.
+        // Set low and coming from several sides, they behave like bounce off walls, on
+        // top of the environment map's ambient.
         let fills: [(light: Entity, from: SIMD3<Float>, colour: UIColor, level: Float)] = [
             (fillLight,  f3(4, 5, -3),  coolFill,        fillIntensity),        // opposite the key
             (sideLight,  f3(5, 3, 4),   light.spillColour, sideIntensity),      // across, warm
@@ -517,8 +516,7 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         ]
         for entry in fills {
             entry.light.components.set(
-                DirectionalLightComponent(color: entry.colour,
-                                          intensity: entry.level * fillScale))
+                DirectionalLightComponent(color: entry.colour, intensity: entry.level))
             entry.light.look(at: .zero, from: entry.from, upVector: f3(0, 1, 0), relativeTo: nil)
             root.addChild(entry.light)
         }
@@ -537,31 +535,14 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // own values". The map is authored at the level the room wants, so this only
         // trims between light and dark mode.
         let exponent = light.exponent
-        if #available(iOS 18.0, tvOS 18.0, *) {
-            Task { @MainActor [weak self] in
-                guard let resource = try? await EnvironmentResource(equirectangular: image,
-                                                                   withName: "QoobRoom"),
-                      let self else { return }
-                self.view.environment.lighting.resource = resource
-                self.view.environment.lighting.intensityExponent = exponent
-            }
+        Task { @MainActor [weak self] in
+            guard let resource = try? await EnvironmentResource(equirectangular: image,
+                                                               withName: "QoobRoom"),
+                  let self else { return }
+            self.view.environment.lighting.resource = resource
+            self.view.environment.lighting.intensityExponent = exponent
         }
     }
-
-    /// Whether the view can be given an environment map at all.
-    ///
-    /// Building an `EnvironmentResource` from an image made at runtime needs iOS 18, and
-    /// this ships to 16 — the older `generate(fromEquirectangular:)` isn't deprecated but
-    /// unavailable. So on 16 and 17 the ambient has to come from directional lights
-    /// instead, which is what `fillScale` is for: same rig, turned up to compensate.
-    private var hasEnvironmentLight: Bool {
-        if #available(iOS 18.0, tvOS 18.0, *) { return true }
-        return false
-    }
-
-    /// How hard the fills work. With an environment map they only shape; without one
-    /// they *are* the ambient, so they have to carry it.
-    private var fillScale: Float { hasEnvironmentLight ? 1.0 : 2.1 }
 
     /// How the room is lit, as both the environment map and the key light read it.
     ///
