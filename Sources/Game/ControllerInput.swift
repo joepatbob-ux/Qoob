@@ -24,6 +24,17 @@ final class ControllerInput {
     /// four-direction game, so precision isn't the point.
     private let stickThreshold: Float = 0.5
 
+    /// How much more dominant the other axis must be before the held direction gives
+    /// way. Picking the axis by `abs(x) >= abs(y)` alone is exactly ambiguous on the
+    /// diagonal, and an analogue stick is *noisy* — held near 45° the dominant axis
+    /// alternated frame to frame, so the direction flip-flopped and Qoob stuttered
+    /// between two of them instead of walking. Worse here than on the touch wheel,
+    /// because a thumb on glass at least holds still.
+    private let switchMargin: Float = 1.35
+
+    /// The direction reported last frame, so `switchMargin` has something to hold on to.
+    private var lastDirection: RollDirection?
+
     /// Connected controllers, kept current by the connect/disconnect notices
     /// rather than rebuilt every frame — `GCController.controllers()` allocates,
     /// and this is polled sixty times a second.
@@ -54,6 +65,14 @@ final class ControllerInput {
     /// The direction currently held, or nil. Checks every connected controller and
     /// then the keyboard, so it doesn't matter what the player picks up.
     func rollDirection() -> RollDirection? {
+        let direction = currentDirection()
+        // Remembered for the hysteresis above. Cleared on release, so letting go and
+        // pushing again always picks the axis fresh.
+        lastDirection = direction
+        return direction
+    }
+
+    private func currentDirection() -> RollDirection? {
         for controller in controllers {
             if let direction = rollDirection(from: controller.physicalInputProfile) {
                 return direction
@@ -67,10 +86,15 @@ final class ControllerInput {
     private func rollDirection(from profile: GCPhysicalInputProfile) -> RollDirection? {
         for name in [GCInputDirectionPad, GCInputLeftThumbstick] {
             guard let pad = profile.dpads[name] else { continue }
-            // Screen up is up the board, matching swipe and tilt. A stick's y axis
-            // is positive upwards, so `up` is `.forward`.
+            // Screen up is up the board, matching the swipe and the wheel. A stick's y
+            // axis is positive upwards, so `up` is `.forward`.
             let x = pad.xAxis.value
             let y = pad.yAxis.value
+
+            // Keep last frame's direction while it's still pushed and still roughly
+            // dominant. A real d-pad snaps to one axis and never needs this; a stick does.
+            if let last = lastDirection, holds(last, x: x, y: y) { return last }
+
             if abs(x) >= abs(y) {
                 if x >= stickThreshold { return .right }
                 if x <= -stickThreshold { return .left }
@@ -80,6 +104,17 @@ final class ControllerInput {
             }
         }
         return nil
+    }
+
+    /// Whether `direction` is still pushed past the threshold and still dominant enough,
+    /// allowing `switchMargin`.
+    private func holds(_ direction: RollDirection, x: Float, y: Float) -> Bool {
+        switch direction {
+        case .right:   return x >= stickThreshold && abs(x) * switchMargin > abs(y)
+        case .left:    return x <= -stickThreshold && abs(x) * switchMargin > abs(y)
+        case .forward: return y >= stickThreshold && abs(y) * switchMargin > abs(x)
+        case .back:    return y <= -stickThreshold && abs(y) * switchMargin > abs(x)
+        }
     }
 
     /// Arrow keys or WASD. Mostly for the Mac, though a keyboard paired with an

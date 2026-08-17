@@ -45,13 +45,24 @@ extension View {
 /// part of it. An iPad has room to spare, and at phone sizes the pad reads as a
 /// speck on a 13-inch screen.
 struct ControlMetrics: Equatable {
-    /// One arrow button.
+    /// One arrow button, as drawn.
     let arrow: CGFloat
     /// Diameter of the circle pad.
     let wheel: CGFloat
+    /// Extra touchable margin around an arrow, beyond what's drawn.
+    ///
+    /// The visual stays small on purpose — the board fills the screen and the old 56pt
+    /// buttons covered a good part of it — but 44pt is Apple's *minimum* for a target,
+    /// not a comfortable size for a control you hold over and over. Worse, the arrow's
+    /// `contentShape` is a circle inscribed in that square, so the corners weren't
+    /// tappable at all and the real area was about 79% of what it looked like.
+    ///
+    /// Slop separates the two: the arrow is drawn at `arrow` and answers touches within
+    /// `arrow + 2 * hitSlop`.
+    let hitSlop: CGFloat
 
-    static let compact = ControlMetrics(arrow: 44, wheel: 116)
-    static let regular = ControlMetrics(arrow: 60, wheel: 164)
+    static let compact = ControlMetrics(arrow: 44, wheel: 116, hitSlop: 10)
+    static let regular = ControlMetrics(arrow: 60, wheel: 164, hitSlop: 8)
 }
 
 private struct ControlMetricsKey: EnvironmentKey {
@@ -107,9 +118,12 @@ struct DirectionWheel: View {
                 DirectionQuadrant(direction: held)
             }
 
+            // `deadZone` is a fraction of the *radius*, so the ring showing it is
+            // `diameter * deadZone` across. It used to be drawn at twice that, which
+            // told the player a much larger area was dead than actually was.
             Circle()
                 .strokeBorder(.primary.opacity(0.16), lineWidth: 1)
-                .frame(width: diameter * deadZone * 2, height: diameter * deadZone * 2)
+                .frame(width: diameter * deadZone, height: diameter * deadZone)
 
             ForEach(Array(RollDirection.allCases.enumerated()), id: \.offset) { _, direction in
                 Image(systemName: arrowIcon(direction))
@@ -140,13 +154,32 @@ struct DirectionWheel: View {
 
     /// Which roll a touch at `point` (in the pad's own coordinates) asks for, or
     /// nil inside the dead centre.
+    /// How much more dominant the other axis has to be before the held direction gives
+    /// way. Straight quadrant classification (`abs(dx) > abs(dy)`) is exactly ambiguous
+    /// on the diagonal, so a thumb resting near 45° flipped between two directions on
+    /// sub-pixel movement and Qoob stuttered between them. 1.35 means a deliberate move
+    /// past the diagonal changes direction and a resting thumb doesn't.
+    private let switchMargin: CGFloat = 1.35
+
     private func direction(at point: CGPoint) -> RollDirection? {
         let radius = diameter / 2
         let dx = point.x - radius
         let dy = point.y - radius
         guard sqrt(dx * dx + dy * dy) > radius * deadZone else { return nil }
+        // Keep what's already held unless the touch has moved clearly out of it.
+        if let held, stillHolds(held, dx: dx, dy: dy) { return held }
         if abs(dx) > abs(dy) { return dx > 0 ? .right : .left }
         return dy < 0 ? .forward : .back        // screen up = up the board
+    }
+
+    /// Whether `direction` still has the dominant component, allowing `switchMargin`.
+    private func stillHolds(_ direction: RollDirection, dx: CGFloat, dy: CGFloat) -> Bool {
+        switch direction {
+        case .right:   return dx > 0 && abs(dx) * switchMargin > abs(dy)
+        case .left:    return dx < 0 && abs(dx) * switchMargin > abs(dy)
+        case .back:    return dy > 0 && abs(dy) * switchMargin > abs(dx)
+        case .forward: return dy < 0 && abs(dy) * switchMargin > abs(dx)
+        }
     }
 
     private func begin(_ direction: RollDirection) {
@@ -245,6 +278,11 @@ struct ArrowButton: View {
         // A press of its own, so the arrow reads as pressed while it's rolling.
         .scaleEffect(isPressed ? 0.92 : 1)
         .animation(.easeOut(duration: 0.12), value: isPressed)
+        // Touchable well beyond what's drawn. The padding grows the footprint without
+        // changing the visual, and `contentShape` then covers the grown square — so a
+        // 44pt arrow answers a 64pt circle. Order matters: `contentShape` uses the
+        // frame it's applied to, so it has to come after the padding, not before.
+        .padding(metrics.hitSlop)
         .contentShape(Circle())
         // Being placed: no gesture here, so the parent's drag gets the touch. Marking
         // it non-hit-testable instead let the drag fall through to the board

@@ -238,6 +238,11 @@ struct ContentView: View {
                     .minimumScaleFactor(0.6)
                     .fixedSize(horizontal: true, vertical: true)
             }
+            // The label is 18pt tall, well under the 44pt minimum for a touch target,
+            // and it opens the score breakdown — so it was a real control that was hard
+            // to hit. Height only: widening it would push into the clock beside it.
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
