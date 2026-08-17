@@ -1,0 +1,71 @@
+#
+# CI — build and test on every push.
+#
+# This is what makes the test suite load-bearing rather than something only ever run
+# by hand. The suites are pure model code, so they need a simulator only because the
+# tests are hosted by the app; nothing here touches a device.
+#
+# Note the project file is generated, not tracked (see .gitignore), so the first real
+# step is always `xcodegen generate` — a clone has nothing to open without it.
+#
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # So it can be kicked off by hand without pushing, which is useful while this
+  # workflow itself is being tuned.
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an in-flight run irrelevant. macOS runners bill at a 10x
+  # multiplier, so not cancelling superseded runs gets expensive quickly.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deliberately the runner's default Xcode rather than a pinned path. macos-15
+      # ships Xcode 16.x, which is what iOS 18 and Swift Testing need, and the exact
+      # point releases on the image change over time — pinning /Applications/Xcode_16.app
+      # breaks the moment that name isn't there.
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun simctl list devices available | grep -i iphone || true
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the project
+        run: xcodegen generate
+
+      # OS=latest rather than a pinned 18.0: the runner carries whichever iOS 18.x
+      # simulator matches its Xcode, and a missing exact version fails the whole run.
+      - name: Test
+        run: |
+          xcodebuild test \
+            -project Qoob.xcodeproj \
+            -scheme Qoob \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      # Kept on failure so a red run can be diagnosed without reproducing locally.
+      - name: Upload results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          retention-days: 7
