@@ -173,12 +173,31 @@ won't catch visual regressions, so the screenshot isn't optional.
 - **Lamp intensity.** Currently 24000 lumens, an educated guess: 5200 produced no
   visible pool at all and 60000 washed the floor out, but the lamp was never fully
   in frame. Needs a look with the lamp centred.
-- **The near-black circular object.** Recurs in several night frames, about one
-  cell across, unidentified.
-- **`liftEmissionForNight` may be a no-op.** It casts to
-  `PhysicallyBasedMaterial` and silently skips anything else, so a loaded model
-  with a different material type gets nothing. Never confirmed it took on the
-  basket, which is one of the two things the player aims at.
+- **The near-black circular object — identified, no fix applied.** It is
+  `coffeeTable2`: a *round* table (1.94 x 1.94 footprint, so it reads as a disc from
+  directly above) whose material carries no texture and a base colour of
+  rgb(0.23, 0.16, 0.08) — luminance 0.17, against roughly 0.40 for the colours in
+  `FurnitureKind.color`. The pale shapes on it in the screenshots are perched toys.
+  Confirmed by generating seed 6653367501949354550 and finding a coffee table with
+  perched toys at exactly the cells the disc occupied.
+
+  A general "lighten any model darker than its kind intends" rule was written and then
+  **backed out**: measuring first showed **26 of 38** untextured furniture materials
+  fall below even a conservative 0.22 floor — bushes at 0.03, plus counters, dressers
+  and planters. Those look right in play because they are *sub*-materials with a
+  lighter dominant surface; `coffeeTable2` is unusual only in being a single dark
+  material covering the whole piece. Any such rule would therefore repaint most of the
+  furniture library, which is a worse outcome than one dark table.
+
+  It is a real legibility fault — a *climbable* piece that reads as a hole at night has
+  to be seen to be used — but the fix belongs in the content, not a renderer
+  heuristic: either re-tone that one asset or drop the variant from rotation. That's a
+  taste call.
+- **`liftEmissionForNight` is not a no-op** — checked and closed. Loaded models come
+  in as `PhysicallyBasedMaterial`, so the cast succeeds. The basket and litterbox turn
+  out to have no bundled model at all (`Model_basket` and `Model_litterbox` don't
+  exist), so both are drawn procedurally with `pbr(...)` — also
+  `PhysicallyBasedMaterial`. Both are therefore lifted as intended.
 - **`present` hitch.** ~1.3s warm, ~5s cold, visible when entering a new house.
   Measure where it goes before choosing between an async build, entity reuse, or
   covering it with a transition.
