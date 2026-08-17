@@ -187,6 +187,8 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         cubeEntity.removeFromParent()
         markerEntities.removeAll()
         targetIndexByCell.removeAll()
+        // The whole scene is rebuilt here, so the dynamic-light budget starts over.
+        lampLightsUsed = 0
         itemEntities.removeAll()
         toyOffsets.removeAll()
         perchedEntities.removeAll()
@@ -600,14 +602,22 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// negotiable, it's how you play — so the *window* and the key came up while the
     /// ceiling stayed almost black. Keeping the ceiling dark is what preserves the
     /// lights-off read; brightening it would just have made it dusk again.
+    /// Third pass: brighter again, and deliberately *not* by lifting the ceiling.
+    ///
+    /// The ceiling term is what says "the light is off", so raising it is the one change
+    /// that would undo the whole effect. What went up instead is the bounce — `wall` and
+    /// especially `floorBounce` — plus the directional fills. Bounce lifts the mid-tones
+    /// and, crucially, the insides of shadows, which is where the old night crushed to
+    /// black: `floorBounce` is nearly doubled, and the floor is where the game is
+    /// actually played. Brighter without a second sun.
         static let night = RoomLight(
-            ceiling: SIMD3(0.055, 0.06, 0.085),
-            wall: SIMD3(0.085, 0.10, 0.145),
-            floorBounce: SIMD3(0.038, 0.042, 0.058),
-            window: SIMD3(0.52, 0.62, 0.86),
-            windowAt: SIMD2(0.22, 0.52), windowRadius: 0.32,  // at eye level, and tighter
-            spill: SIMD3(0.26, 0.17, 0.09),
-            spillAt: SIMD2(0.68, 0.58), spillRadius: 0.20,    // low and small: a doorway
+            ceiling: SIMD3(0.085, 0.092, 0.125),
+            wall: SIMD3(0.145, 0.165, 0.225),
+            floorBounce: SIMD3(0.075, 0.082, 0.105),
+            window: SIMD3(0.62, 0.72, 0.96),
+            windowAt: SIMD2(0.22, 0.52), windowRadius: 0.34,  // at eye level, and tighter
+            spill: SIMD3(0.34, 0.23, 0.13),
+            spillAt: SIMD2(0.68, 0.58), spillRadius: 0.22,    // low and small: a doorway
             keyFrom: SIMD3(-7, 2.2, 4),                       // low and raking: moonlight
             keyColour: UIColor(red: 0.76, green: 0.84, blue: 1.00, alpha: 1),
             spillColour: UIColor(red: 1.00, green: 0.86, blue: 0.68, alpha: 1),
@@ -705,9 +715,14 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// window is a few hundred lux at most against a few thousand for a lit room, and
     /// getting that ratio wrong is what made the old dark mode read as dusk. The fills go
     /// down further still: at night there's very little in the room bouncing anything.
-    private var keyIntensity: Float { appearance == .light ? 2100 : 900 }
-    private var fillIntensity: Float { appearance == .light ? 520 : 150 }
-    private var sideIntensity: Float { appearance == .light ? 330 : 110 }
+    /// Night was raised on the second look: the fills roughly doubled and the key came up
+    /// with them, keeping about the same 1.7:1 lead the day rig has so the room stays
+    /// grounded rather than going flat. The fills are what reach into the key's shadows,
+    /// so this is the other half of stopping night crush to black — the first half being
+    /// `RoomLight.night`'s bounce.
+    private var keyIntensity: Float { appearance == .light ? 2100 : 1250 }
+    private var fillIntensity: Float { appearance == .light ? 520 : 300 }
+    private var sideIntensity: Float { appearance == .light ? 330 : 210 }
 
     private func setupCamera() {
         // The 3-arg init defaults its field-of-view orientation to vertical
@@ -2076,35 +2091,67 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// Tints a toy's emission when it's sitting on (or has reached) a goal.
     /// Puts a real light inside a standard lamp, and lights its shade.
     ///
-    /// A point light rather than another directional, because that's the whole point: it
-    /// falls off with distance, so it makes a *pool* on the floor around the lamp and
-    /// leaves the far corner of the room dark. That's what a room with one lamp on looks
-    /// like, and it's something no number of directionals can express — a directional has
-    /// no position, so it lights the whole board evenly wherever you put the entity.
+    /// A **spotlight**, aimed down, and that choice is forced: `PointLightComponent` has
+    /// no `Shadow` type at all, so a point light illuminates without casting anything.
+    /// The lamp lit the floor while every shadow in the room still came from the
+    /// directional key — light from one place, shadows from another. Only
+    /// `SpotLightComponent` and `DirectionalLightComponent` can cast, so the lamp is a
+    /// spotlight, and its shadows now radiate away from the lamp as they should.
+    ///
+    /// A shade throws most of its light down in a cone anyway, so this is closer to the
+    /// real fitting than an omnidirectional bulb was. The cone is deliberately wide —
+    /// 55° to 105° — because a narrow one reads as a theatre spot rather than a lamp, and
+    /// the falloff between inner and outer angle is what softens the edge of the pool.
     ///
     /// Only lit in dark mode. The lamp stays in the room by day as furniture, switched
     /// off, which is both true to life and means the daytime rooms gained a piece.
     private func switchOn(lamp node: Entity, surface: Float) {
         guard appearance == .dark else { return }
+        // RealityKit allows eight dynamic lights, and only lifts that on Apple6+ GPUs.
+        // The key and three fills take four, so four are left — and houses average three
+        // lamps with up to two per room, which would otherwise sail past the limit and
+        // start dropping lights unpredictably. Past the cap a lamp still shows a lit
+        // shade, so it reads as on; it just doesn't light the room.
+        guard lampLightsUsed < Self.maxLampLights else {
+            liftEmission(node, colour: Self.lampGlow, intensity: 0.75)
+            return
+        }
+        lampLightsUsed += 1
+
         let bulb = Entity()
         // Just under the top of the shade, where the bulb would be.
         bulb.position = f3(0, Double(surface) * 0.82, 0)
-        bulb.components.set(PointLightComponent(
-            color: UIColor(red: 1.00, green: 0.87, blue: 0.68, alpha: 1),
-            // Lumens, and they don't map intuitively onto a world where a cell is one
-            // unit: 5200 — a bright domestic bulb — produced no visible pool at all, and
-            // 60000 washed the floor out. RealityKit's own default for a point light is
-            // ~27000, which is the right neighbourhood.
+        // A spotlight points along its own -Z, so it needs turning to face -Y.
+        bulb.transform.rotation = quat(-.pi / 2, f3(1, 0, 0))
+        var spot = SpotLightComponent(
+            color: Self.lampLight,
+            // Lumens. Kept from the point-light tuning, where 5200 — a bright domestic
+            // bulb — produced no visible pool at all and 60000 washed the floor out.
+            // A cone concentrates what a sphere spread everywhere, so this reads brighter
+            // than the same figure did before.
             intensity: 24000,
+            innerAngleInDegrees: 55,
+            outerAngleInDegrees: 105,
             // In world units, and a cell is one — so the pool is a few cells across and
-            // the room beyond it stays night. Tuned to overlap a neighbouring piece or two
-            // without reaching the walls of a big room.
-            attenuationRadius: 7))
+            // the room beyond it stays night.
+            attenuationRadius: 7)
+        spot.attenuationFalloffExponent = 1.6
+        bulb.components.set(spot)
+        bulb.components.set(SpotLightComponent.Shadow())
         node.addChild(bulb)
         // The shade has to look lit, or the pool of light appears from nowhere.
-        liftEmission(node, colour: UIColor(red: 1.00, green: 0.90, blue: 0.72, alpha: 1),
-                     intensity: 0.75)
+        liftEmission(node, colour: Self.lampGlow, intensity: 0.75)
     }
+
+    /// Warm tungsten, and the slightly paler tint the shade itself takes.
+    private static let lampLight = UIColor(red: 1.00, green: 0.87, blue: 0.68, alpha: 1)
+    private static let lampGlow = UIColor(red: 1.00, green: 0.90, blue: 0.72, alpha: 1)
+
+    /// See `switchOn(lamp:surface:)` — four directionals are already spoken for.
+    private static let maxLampLights = 4
+
+    /// Reset per `present`, since the whole scene is rebuilt there.
+    private var lampLightsUsed = 0
 
     /// Lifts a subtree's emission so it stays readable with the lights off.
     ///

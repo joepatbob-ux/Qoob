@@ -170,9 +170,12 @@ won't catch visual regressions, so the screenshot isn't optional.
 
 ## Phase 4 — Close the open visual issues
 
-- **Lamp intensity.** Currently 24000 lumens, an educated guess: 5200 produced no
-  visible pool at all and 60000 washed the floor out, but the lamp was never fully
-  in frame. Needs a look with the lamp centred.
+- **Lamp intensity — confirmed.** 24000 lumens verified with the lamp finally in frame
+  (seed 6653367501949354550, roll two cells left of the start). The pool reads clearly
+  and falls off within a few cells. The lamp is now a shadow-casting spotlight rather
+  than a point light: `PointLightComponent` has no `Shadow` type, so a point light lit
+  the floor while every shadow still came from the directional key — light from one
+  place, shadows from another.
 - **The near-black circular object — identified, no fix applied.** It is
   `coffeeTable2`: a *round* table (1.94 x 1.94 footprint, so it reads as a disc from
   directly above) whose material carries no texture and a base colour of
