@@ -1,71 +1,83 @@
 # Building Qoob
 
-## Prerequisites
-- A **Mac with Xcode 15+**.
-- A **real iPhone/iPad** to use tilt (the Simulator has no gyroscope — the game
-  auto-falls back to swipe + on-screen D-pad there, so it still runs).
+## Requirements
 
-## Generate & open (recommended)
+- **Xcode 26 or newer.** Not because of the deployment target: the app calls Liquid
+  Glass (`glassEffect` in `GameControls.swift`) behind a runtime
+  `#available(iOS 26.0, *)`, and a runtime guard still needs the symbol to exist in the
+  SDK. Xcode 16 fails with `cannot find 'Glass' in scope`. CI asserts this up front so
+  the failure is one line rather than four pages.
+- Deployment target **iOS 18** (tvOS 26).
+- A simulator is fine — nothing here needs a device.
+
+## Generate & open
+
+The `.xcodeproj` is generated and **not tracked**, so a clone has nothing to open
+until XcodeGen has run:
+
 ```bash
-cd Qoob
 brew install xcodegen        # once
+cd Qoob
 xcodegen generate
 open Qoob.xcodeproj
 ```
-Then in Xcode: select the `Qoob` target ▸ **Signing & Capabilities** ▸ pick your
-Team, choose your device, and **Run**.
 
-### Optional: commit the project so you never need XcodeGen again
+Then pick your Team under the `Qoob` target ▸ Signing & Capabilities if you're
+building to a device, choose a destination, and Run.
+
+`project.yml` is the single source of truth. It globs `Sources/` and `Tests/`, so a
+new file needs only a regenerate — no project editing.
+
+### Two regenerate gotchas
+
+- **Signing resets.** `DEVELOPMENT_TEAM` is empty in the spec, so regenerating clears
+  your team and device builds fail with "requires a development team" until you pick it
+  again. Simulator builds are unaffected. Put your team ID in `project.yml` if the
+  friction annoys you.
+- **New files don't compile until you regenerate.** If a test you just wrote appears
+  not to run — the count doesn't go up — this is why.
+
+## Tests
+
 ```bash
-git add Qoob.xcodeproj && git commit -m "Add generated Xcode project"
+xcodebuild test -project Qoob.xcodeproj -scheme Qoob \
+  -destination 'platform=iOS Simulator,name=iPhone 17'
 ```
-(`.xcodeproj` is currently gitignored; force-add it if you want it tracked:
-`git add -f Qoob.xcodeproj`.)
 
-## No-XcodeGen alternative
-File ▸ New ▸ Project ▸ iOS App (SwiftUI). Delete its template `*App.swift` +
-`ContentView.swift`, drag the `Sources/` folder in (Create groups), and set the
-target's **Info.plist File** build setting to `Sources/Resources/Info.plist`.
+32 tests in 6 suites (Swift Testing), covering `Core/` only — no rendering, no device.
+Roughly two minutes locally. See the README's Tests section for what they pin and why
+reachability has to be pose-gated.
 
-## First-build watch-list
-This codebase was written and reviewed without a compiler on hand (developed in a
-Linux environment). It's been carefully checked, but if the first build flags
-anything, the most likely spots — all quick fixes — are:
-- **SceneKit numeric types** — everything funnels through the `v3(...)` helper and
-  `SCNMatrix4Make*` with `Float`; if a line complains, wrap literals in `Float(...)`.
-  The visual-polish layer also sets `node.rotation` via `SCNVector4(…)`; on iOS its
-  components are `Float`, so bare literals are fine, but wrap in `Float(...)` if the
-  SDK flags ambiguity.
-- **A new SDK API nuance** (e.g. an `SCNAction`/`SCNMaterialProperty` signature).
-- Nothing depends on third-party packages — it's pure SwiftUI + SceneKit +
-  CoreMotion + AVFoundation.
+CI (`.github/workflows/ci.yml`) runs build + test on every push. It resolves a
+simulator from `simctl` at runtime rather than naming one, because both of its first
+two failures were a pinned name going stale.
 
-## Tuning constants (for first playtest)
+## Tuning constants
+
 All feel is in plain constants — no logic changes needed to adjust:
 
 | What | Where |
 |------|-------|
 | Roll speed / cadence | `GameController.rollDuration`, `restBetweenRolls` |
-| Tilt sensitivity / inversion | `MotionManager.threshold`, `invertX`, `invertY` |
-| Camera angle (top-down lean) | `SceneKitRenderer.topDownTilt` |
-| **Soft-body / wind / fur / grass "feel"** | **`Environment/VisualTuning.swift` (one file, all constants)** |
-| Cat breathing amount/speed | `VisualTuning.qoob` (`breatheAmplitude`, `breathePeriod`) |
-| Squash / rebound / durations | `VisualTuning.qoob` (`squashAmount`, `reboundAmount`, `landDuration`…) |
+| **Soft-body / wind / fur / grass feel** | **`Environment/VisualTuning.swift` — one file, all constants** |
+| Cat breathing amount and speed | `VisualTuning.qoob` (`breatheAmplitude`, `breathePeriod`) |
+| Squash / rebound / durations | `VisualTuning.qoob` (`squashAmount`, `reboundAmount`, `landDuration`) |
 | Fur response to wind | `VisualTuning.fur` (`windResponse`, `baseSway`) |
-| Base wind / gusts | `VisualTuning.wind` (`baseStrength`, `gustStrength`, `gustInterval`) |
-| Grass sway / recovery | `VisualTuning.grass` (`swayAmount`, `recovery`, `interactionStrength`) |
-| Shadow softness | `setupLighting` (`shadowRadius`, `shadowColor`) |
-| Furniture heights / colours | `Furniture.swift` |
-| Environment floor/mood colours | `Environment.swift` |
-| Difficulty curve (grid, targets, toys, furniture) | `Level.generate` |
-| Push / knock-off points | `GameController.requestRoll` (150 / 100) |
+| Base wind and gusts | `VisualTuning.wind` (`baseStrength`, `gustStrength`, `gustInterval`) |
+| Grass sway and recovery | `VisualTuning.grass` (`swayAmount`, `recovery`, `interactionStrength`) |
+| Lighting, day and night | `RealityKitRenderer.RoomLight` — two named descriptions, not one rig dimmed |
+| Table-lamp brightness | `switchOn(lamp:surface:)` — point-light intensity in lumens |
+| Camera lean | `RealityKitRenderer.setBoardTilt` (driven from Settings) |
+| Furniture heights, footprints, facing | `Core/Furniture.swift` |
+| Room floors and mood colours | `Core/Environment.swift` |
+| How much a room holds | `Level.generate` — scaled to floor area, not a level index |
+| Push and knock-off points | `GameController.requestRoll` (150 / 100) |
 
 ## Drop-in art (all optional, all fall back to procedural)
+
 Into `Sources/Resources/Assets.xcassets` (image sets already exist):
 `fur_albedo`/`fur_normal`, `carpet_albedo`/`carpet_normal`, `floor_<env>`,
 `cat_face`/`cat_butt`/`cat_paws`/`cat_dot`/`cat_ring`/`cat_triangle`.
-As bundled resource files: `cube_cat.usdz` (Qoob's body), and
-`<furnitureKind>.usdz` (e.g. `sofa.usdz`, `fridge.usdz`). See README for details.
 
 ## Bundled 3D models
 

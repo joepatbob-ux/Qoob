@@ -1,50 +1,50 @@
-# Qoob — a cube-cat tilt-and-roll puzzle for iOS
+# Qoob — a cube-cat rolling puzzle
 
-A calm, meditative rolling-puzzle game starring a **cube-cat**: a die whose six
-faces each depict a part of the cat. You roll it around a grid — by **tilting
-your iPhone/iPad** (gyroscope), swiping, or the on-screen D-pad — to land the
-**pictured side face-down** on each glowing target tile. Clear every target at
-your own pace — **there is no time limit**; a gentle clock only counts up so
-per-level best times stay meaningful. Gentle affirmations and a procedural
-ambient soundtrack accompany each match.
+A calm, endless rolling puzzle starring a **cube-cat**: a die whose six faces each
+depict a part of the cat. You roll it around a house — by swiping, using the
+on-screen D-pad, or a connected game controller — to land the **pictured side
+face-down** on the glowing target tile. There's no timer pressure and nothing to
+lose; a clock counts up only so it means something if you want it to.
 
-**The cube-cat's six faces** (see `Core/CatSymbols.swift`, drawn procedurally so
-no image assets are needed yet):
+Houses are generated from a seed and are bigger than the screen, so the camera
+follows Qoob rather than framing the whole thing. Reach the litterbox and the house
+is replaced by a new one — the world is endless because nothing is remembered.
+
+**The cube-cat's six faces** (`Core/CatSymbols.swift`, drawn procedurally — no image
+assets needed):
 
 | Face | Depiction |
 |------|-----------|
 | front | the cat's **face** |
-| up | the **butt** |
-| down | **4 paws** |
-| left | a single **dot** |
-| right | a **ring** |
-| back | **three dots** in a triangle |
+| back | the **rear** and tail, opposite the head |
+| down | four **paws**, underneath |
+| up | **three spots** along the spine |
+| left | a single **dot** on the flank |
+| right | a **ring** on the other flank |
 
-Each tile shows the depiction you must roll onto it; the puzzle is tracking the
-cat's orientation so the right side ends up on the bottom.
-
-This is an **original game inspired by** the 1995 game *Endorfun* — its
-cube-on-a-grid colour-matching feel and meditative tone. It contains **none** of
-Endorfun's code, levels, art, or audio. See "Relationship to the reverse
-engineering repo" below.
+The starting layout is in `Level.startingFaces()`. Head and rear are opposite, and
+paws start down — which matters, because "which face is down" is the whole game.
 
 ## Stack
 
-- **SwiftUI** — app shell + HUD (score, timer, tiles-left, mantras, menus)
-- **SceneKit** — 3D board, cube, lighting, roll animation
-- **CoreMotion** — gyroscope/gravity → discrete roll direction
-- **AVAudioEngine** — fully procedural ambient pad + pentatonic match bells
-  (zero audio asset files)
-
-No third-party dependencies.
+- **SwiftUI** — HUD, menus, settings, the level builder
+- **RealityKit** — all 3D: meshes, materials, image-based lighting, the roll animation
+- **AVFoundation** — a procedural ambient pad and match bells
+- **GameController** — optional MFi/DualSense/Xbox pad support
+- No third-party packages.
 
 ## Build & run
 
-You need a Mac with **Xcode 15+** and, to actually tilt-and-roll, a **real
-device** (the Simulator has no gyroscope — the menu will warn you and you can
-still see the board).
+**Requirements**
 
-### Option A — XcodeGen (recommended)
+- **Xcode 26 or newer.** Not because of the deployment target — the app calls Liquid
+  Glass (`glassEffect`) behind a runtime `#available(iOS 26.0, *)`, and a runtime
+  guard still needs the symbol to exist in the SDK. Xcode 16 cannot compile it.
+- Deployment target is **iOS 18** (tvOS 26).
+- A simulator is fine. There's no motion or camera dependency.
+
+**The project file is generated and not tracked**, so a fresh clone has nothing to
+open until you run XcodeGen:
 
 ```bash
 brew install xcodegen        # once
@@ -53,239 +53,165 @@ xcodegen generate
 open Qoob.xcodeproj
 ```
 
-Select your device, set your signing team on the `Qoob` target
-(Signing & Capabilities), and Run.
+`project.yml` is the single source of truth for targets and build settings. Any new
+file under `Sources/` or `Tests/` is picked up by a regenerate — the spec globs those
+directories, so nothing needs adding by hand.
 
-### Option B — no extra tools
+Two things worth knowing about regenerating:
 
-1. In Xcode: **File ▸ New ▸ Project… ▸ iOS ▸ App**. Name it `Qoob`,
-   Interface **SwiftUI**, Language **Swift**.
-2. Delete the template's `ContentView.swift` and `*App.swift`.
-3. Drag the `Sources/App`, `Sources/Game`, `Sources/Motion`, and
-   `Sources/Audio` folders into the project (check *Copy items if needed* and
-   *Create groups*).
-4. Either use the generated Info.plist and add **Portrait** orientation, or set
-   the target's **Info.plist File** build setting to
-   `Sources/Resources/Info.plist`.
-5. Run on a device.
+- It resets `DEVELOPMENT_TEAM` to empty, so a device build needs your team
+  re-selected under Signing & Capabilities. Simulator builds are unaffected.
+- New files won't be compiled until you regenerate. If a test you just wrote seems
+  not to run, that's why.
 
 ## Controls
 
-Three schemes, usable in any combination (toggle them on the menu or the
-in-game chips):
+Three schemes, usable together (toggle them in Settings):
 
-- **Tilt** (real device only) — tilt right/left rolls right/left; tilt the top
-  of the device away from you rolls forward (up the board), toward you rolls
-  back. Whatever pose you hold when a level starts becomes "flat/neutral", so it
-  works lying down or sitting up, and a held tilt keeps rolling one cell at a
-  time.
-- **Buttons** — an on-screen D-pad.
-- **Swipe** — swipe anywhere on the board in a direction; always active.
+- **Swipe** anywhere on the board — one roll per swipe, or hold at the end of a swipe
+  to keep rolling.
+- **On-screen D-pad** — hold a direction to walk at a steady cadence.
+- **Game controller** — left stick or D-pad.
 
-On the Simulator (no gyroscope) tilt is disabled automatically and you play with
-buttons/swipes.
+All three report the direction currently *held* rather than firing one-shot events,
+so a held input rolls at one shared cadence set by the frame loop. There is no tilt
+control; it was removed.
 
 ## How to play
 
-Roll the cat so the depiction on its **bottom** face matches the picture on a
-glowing target tile — that clears it. The **FIND** legend at the top shows the
-depictions still needed this level. Clear every target — take as long as you like.
-Consecutive matches build a streak (higher score + a rising bell). Every roll
-and match gives light haptic feedback, and the cat gently "breathes" while you
-think.
+- **Match the target tile.** Roll so the depicted face lands face-down on the glowing
+  pad. Consecutive matches build a streak worth extra points.
+- **Push toys into the basket.** Roll into a toy and it rolls ahead of you, rebounding
+  off whatever stops it — which is what frees a toy wedged in a corner. Toys only ever
+  travel at floor level.
+- **Knock toys off the furniture.** Roll into a piece with a toy perched on it and the
+  toy drops to the floor, where it becomes a normal pushable one.
+- **Reach the litterbox** to end the house and open a new one.
 
-### If a tilt rolls the cube the wrong way
+Climbing is capped at **one level per roll**, and a climb only works from the gathered
+pose — head up, paws pointing at the step — so that the roll lands Qoob standing on
+top. A drop needs the mirror of that pose. If you ever end up somewhere with no legal
+move, an escape hatch opens so you can't be stranded; the generator also
+exhaustively verifies that no house contains such a state (see Tests).
 
-Orientation math depends on how you hold the device. Two one-line toggles in
-`Sources/Motion/MotionManager.swift`:
+## Architecture: engine-agnostic core, one renderer seam
 
-```swift
-var invertX = false   // flip if left/right are reversed
-var invertY = false   // flip if forward/back are reversed
-var threshold = 0.28  // lower = more sensitive
-```
-
-## Architecture: engine-agnostic core + a renderer seam
-
-The game is split so the **gameplay never depends on how it's drawn**. A
-`GameRenderer` protocol is the only contract between them:
+The gameplay never depends on how it's drawn. A `GameRenderer` protocol is the only
+contract between them:
 
 ```
-GameController (orchestrator, no rendering imports)
-     │  owns BoardModel + CubeState, timer, scoring, input, audio, haptics
+GameController (orchestrator — imports no rendering engine)
+     │  owns the Game value (Level + BoardModel + CubeState),
+     │  the frame loop, clock, scoring, input, audio, haptics
      │
      ▼  drives, via the protocol:
-GameRenderer  ──►  present(level:board:cube:)          build visuals
-                   animateRoll(_:to:duration:completion:)  animate one roll
-                   clearTile(col:row:colorIndex:)      tile flourish
+GameRenderer  ──►  present(level:board:cube:)        build the scene
+                   animateRoll(_:to:toLevel:…)       animate one roll
+                   clearTile(col:row:)               matched-tile flourish
      ▲
-     └── SceneKitRenderer  (the current implementation; Metal-backed)
+     └── RealityKitRenderer   (the current implementation)
 ```
 
-- **`Core/`** imports no rendering engine at all — it's the whole game as data
-  and rules (`CubeState` face model + roll permutation, `BoardModel` matching,
-  `Level` generation, palette).
-- **`Rendering/`** is the only place SceneKit lives. Everything visual —
-  meshes, materials, camera, lights, the pivot-edge roll animation — is here.
-
-**Why this matters for detailed 3D models / a possible Metal move:**
-
-- *Detailed models now, still on SceneKit:* edit only `SceneKitRenderer.swift`.
-  Swap `makeCubeNode`'s `SCNBox` for a node loaded from a USDZ/OBJ
-  (`SCNScene(named: "cube.usdz")`), keeping the six face materials in the
-  SCNBox order; do the same for tiles. Nothing in `Core/` or `GameController`
-  changes. (SceneKit already renders through Metal — you don't need raw Metal
-  for detailed models.)
-- *Switch engines later:* write one new type conforming to `GameRenderer`
-  (e.g. `RealityKitRenderer` or a custom `MetalRenderer`) and construct it in
-  `GameView.makeUIView` instead of `SceneKitRenderer`. The core is untouched.
+- **`Core/`** imports no rendering engine — it is the whole game as data and rules:
+  the face model and roll permutation, matching, house generation, furniture,
+  authored blueprints, and the model-sizing rule. This is what makes the test suite
+  possible: every invariant runs with no RealityKit, no view and no device.
+- **`Rendering/`** is the only place RealityKit lives.
 
 ## Project layout
 
 ```
 Sources/
   App/
-    QoobApp.swift      @main entry point
-    ContentView.swift      SwiftUI HUD + menus + D-pad
-  Core/                    ← no rendering-engine imports
-    CoreTypes.swift        Face, RollDirection, GridCell, CubeState (roll math)
-    BoardModel.swift       grid + symbol-match logic
-    Level.swift            procedural level gen + furniture + reachability
-    Furniture.swift        living-room obstacle model (kinds, footprints)
-    CatSymbols.swift       the six cube-cat depictions + generated textures
-    GamePalette.swift      accent colours + mantras
-    ProgressStore.swift    best times/scores per level (UserDefaults)
-  Rendering/               ← the ONLY place SceneKit lives
-    GameRenderer.swift     the renderer protocol (the seam)
-    SceneKitRenderer.swift SceneKit implementation (meshes, camera, animation)
-    SceneKitHelpers.swift  SCNVector3 convenience
-    BundledTextures.swift  optional asset-catalog textures (fur/carpet/art)
+    QoobApp.swift              @main entry point
+    ContentView.swift          HUD, menus, presentation
+    GameControls.swift         D-pad and control chips
+    SettingsView.swift         control scheme and feedback preferences
+    LevelBuilderView.swift     plan-view house editor
+  Core/                        ← no rendering-engine imports
+    CoreTypes.swift            Face, RollDirection, GridCell, CubeState (roll math)
+    BoardModel.swift           grid, matching, toy pushing, knock-off
+    Level.swift                house generation, furniture placement, reachability
+    HouseBlueprint.swift       authored houses + their on-disk library
+    SeededGenerator.swift      SplitMix64 — the seed everything derives from
+    Furniture.swift            kinds, footprints, heights, facing
+    Environment.swift          room kinds and what furnishes each
+    ModelFit.swift             how a 3D model is sized and turned to fit a footprint
+    CatSymbols.swift           the six depictions, drawn procedurally
+    GamePalette.swift          accent colours and mantras
+  Rendering/                   ← the ONLY place RealityKit lives
+    GameRenderer.swift         the protocol (the seam)
+    RealityKitRenderer.swift   scene, lighting, camera, furniture, roll animation
+    RenderMaterials.swift      stateless material builders
+    RealityKitHelpers.swift    small conveniences, texture loading
+    RealityKitEnvironmentEffects.swift  soft-body, grass, ambient motion
+    ProceduralFur.swift        generated fur texture
+    ProceduralTextures.swift   generated floors and glyphs
+    BundledTextures.swift      optional asset-catalogue overrides
   Game/
-    GameController.swift   orchestrator: state, loop, timer, scoring, input
-    GameView.swift         SwiftUI ⇄ renderer bridge + swipe gestures
-    GameViewModel.swift    observable state for the HUD
-    Haptics.swift          light roll/match feedback
-  Motion/
-    MotionManager.swift    CoreMotion tilt → RollDirection
+    GameController.swift       state, frame loop, clock, scoring, input
+    GameView.swift             SwiftUI ⇄ renderer bridge, swipe gestures
+    GameViewModel.swift        observable state for the HUD
+    ControllerInput.swift      MFi / DualSense / Xbox pads
+    Haptics.swift              roll and match feedback
+  Environment/
+    WindSystem.swift           shared wind, so everything sways together
+    VisualTuning.swift         all the feel constants, in one file
   Audio/
-    AudioEngine.swift      procedural ambient pad + match bells
+    AudioEngine.swift          procedural ambient pad and match bells
   Resources/
+    Assets.xcassets            textures + bundled 3D models as Data Sets
     Info.plist
-project.yml                XcodeGen spec
+Tests/                         ← Swift Testing, over Core only
+  PoseSearch.swift             exhaustive (cell, orientation) reachability search
+  HouseInvariantTests.swift    reachability, softlocks, mounds, doorways
+  ToyPhysicsTests.swift        push paths, wedging, basket, knock-off
+  FurnitureTableTests.swift    the furniture table and ModelFit
+  BlueprintTests.swift         authored houses and Codable fidelity
+project.yml                    XcodeGen spec — the source of truth
+PLAN.md                        engineering plan and its status
+ROADMAP.md                     product ideas
 ```
 
-## Adding your own textures (fur, carpet, face art)
+## Houses
 
-The renderer loads optional textures from `Sources/Resources/Assets.xcassets`
-and **falls back to the procedural look when they're absent** — so the empty
-image slots are already there; just drop PNGs in (Xcode ▸ select the image set ▸
-drag your PNG onto the 1×/2×/3× well). No code change needed.
+There are no levels, and there never really were: `levelIndex` was set to 0 and never
+incremented, so every "difficulty by level" term silently evaluated to its index-0
+value — which had switched the toy and knock-off mechanics off entirely. Everything is
+now scaled to a room's own floor area, which is the thing that actually decides how
+much it can hold.
 
-| Asset name | Used for | Fallback if empty |
-|------------|----------|-------------------|
-| `fur_albedo` | cat body, **tinted per face** by the face colour | flat accent colour |
-| `fur_normal` | cat body surface relief | none |
-| `carpet_albedo` | the floor (board tiles + ground), tiled seamlessly | flat neutral colour |
-| `carpet_normal` | floor surface relief | none |
-| `cat_face`, `cat_butt`, `cat_paws`, `cat_dot`, `cat_ring`, `cat_triangle` | per-face emblem art | the procedural glyph |
+A house is partitioned into rooms, each with a kind (`Environment.swift`) that decides
+its floor, walls and what furnishes it: living room, kitchen, bedroom, yard, patio,
+sandpit. Furniture heights are whole numbers of cube units — see the roll maths below
+for why they have to be. Outdoors, verticality comes from **stepped mounds** rather
+than props, in whole-cube tiers, because a 90° pivot can only land a face flat on an
+exact cube height.
 
-Notes:
-- Make `fur_albedo` a **greyish** fur — it's multiplied by each face's accent
-  colour, so grey fur becomes ginger/pink/teal/… per face. A pre-coloured fur
-  will look over-saturated.
-- Carpet should be **seamless/tileable**; each board cell offsets the texture by
-  its grid coordinates so a seamless pattern flows unbroken across the floor.
-- For real surface depth, add the `*_normal` maps (derive them from the albedo
-  with a free tool like Materialize or NormalMap-Online).
-- `cat_*` art should be a centred emblem (transparent background reads best, so
-  the fur/colour shows around it). It replaces only the glyph, not the whole
-  face.
-- Tiling density is set in `bodyMaterial` / `addGround` (`SCNMatrix4MakeScale`),
-  easy one-line tweaks.
+Every indoor room is guaranteed something one level high to climb on. Without it a
+room's taller furniture is scenery: the kitchen once had nothing under two levels —
+counter 2, table 2, fridge 4 — so none of it could be got onto.
 
-The **app icon** is a generated placeholder (`AppIcon.appiconset/icon_1024.png`)
-— replace it with your own 1024×1024 PNG when ready. The cat casts a soft
-shadow onto the floor (tune `shadowRadius` / `shadowColor` in `setupLighting`).
+## The level builder
 
-## Environments
+Settings ▸ *Level builder…* opens a plan-view editor: drag out rooms, punch doors
+through walls, place furniture, mounds, rugs, toys, the basket and the litterbox, then
+validate and play.
 
-Levels are themed and cycle as you progress (`Environment.swift`):
-**Living Room → Kitchen → Bedroom → Yard**, changing every 3 levels. Each sets
-its floor colour, ground colour, backdrop mood, and furniture set (living room:
-sofa/coffee table/armchair · kitchen: counter/dining table/fridge · bedroom:
-bed/dresser/nightstand · yard: garden bench/bush/planter). The current
-environment is shown on the menus. Drop a `floor_<env>` PNG (e.g.
-`floor_kitchen`) into `Assets.xcassets` to texture that floor; otherwise the
-environment's colour is used.
-
-## The living room (top-down + obstacles)
-
-The camera is near **top-down**, looking down at the floor with a slight lean so
-furniture keeps some dimension (tune `topDownTilt` in `SceneKitRenderer`). Each
-environment's floor is scattered with **furniture obstacles** the cat must roll
-around (`Furniture.swift`).
-
-- Furniture cells are **impassable**: `Level.generate` places pieces, records
-  their cells in `blocked`, and `GameController` refuses rolls into them
-  (`BoardModel.passable`).
-- **Always solvable**: generation flood-fills the region the cube can actually
-  reach around the furniture and places targets *only* there, and it rejects any
-  furniture layout that would wall off more than a third of the floor.
-- Furniture renders as stylised placeholder boxes (sofa/armchair get a back
-  cushion). Drop `sofa.usdz` / `coffee_table`… no — the model name is the kind's
-  raw value: **`sofa.usdz`, `coffeeTable.usdz`, `armchair.usdz`, `rugChest.usdz`**
-  (`.usdc`/`.scn` also work) into the project and it's used in place of the
-  placeholder, scaled to the piece's footprint.
-
-### Pushable toys (bonus points)
-
-Some floors have **yarn-ball toys** and glowing **pads**. Roll the cat into a
-toy to shove it one cell (Sokoban-style); land it on a pad for **+150** bonus
-points. Toys are optional — they never block winning — and each is generated so
-a single push solves it (item at goal−1, with a clear cell behind to push from).
-Pushing into a wall, furniture, or another toy is blocked. See
-`BoardModel` (item state), `GameController.requestRoll` (push resolution), and
-`SceneKitRenderer.moveItem` (the slide).
-
-### Knock-off toys
-
-From level 4 on, some toys start **perched on furniture** (`PerchedToy`). Roll
-the cat into that furniture and the toy **tumbles onto the floor** for **+100**,
-then becomes a normal pushable toy you can shove onto a pad. See
-`BoardModel.knockOff` and `SceneKitRenderer.knockOffToy`.
-
-## Progression & records
-
-Levels are generated deterministically from their index, so each level is the
-same board every time — which makes per-level records meaningful. `ProgressStore`
-persists (in `UserDefaults`) the **best completion time** and **best score** per
-level and the highest level reached. The win screen shows your time, flags a
-"★ New best time!", and otherwise shows the best to beat. "Next level" advances
-the index; the difficulty (grid size, target count) scales with it
-in `Level.generate`.
-
-## Dropping in a 3D cat model
-
-The renderer looks for a bundled **`cube_cat.usdz`** (or `.usdc` / `.scn`); if
-present it's normalised to a unit cube, centred, and used as the cube body in
-place of the procedural box + decals. Add the file to the project (under
-`Sources/`, then re-run `xcodegen generate`) and it takes over automatically —
-no code change.
-
-Important: the model must **depict the six faces in the layout from
-`Level.startingFaces`** (front = face, up = butt, down = 4 paws, left = dot,
-right = ring, back = three dots), so the rolling logic and the visible faces
-stay in agreement. Keep it inside a unit cube centred at the origin; rolling,
-matching, breathing and shadows keep working untouched.
+It emits the **same `Level`** the generator does, so an authored house is
+indistinguishable to the rest of the game. A blueprint stores only the authored
+decisions — never the derived floor, blocked and surface sets — so `makeLevel()` can
+apply the identical rules and a hand-built house can't reach a state a generated one
+never could. That's also what gets saved to disk: the small, stable, meaningful part.
 
 ## The roll math (why the bottom face is always correct)
 
-The cube tracks its six face colours logically and animates visually from the
-**same** `RollDirection`, so they never drift. Rolling permutes the faces
-exactly as a physical die (edge length 1, pivoting on the bottom edge). For a
-roll to the **right** (+X), a 90° rotation about the world Z axis gives:
+The cube tracks its six face symbols logically and animates from the **same**
+`RollDirection`, so the two can't drift. Rolling permutes the faces exactly as a
+physical die (edge length 1, pivoting on the bottom edge). For a roll to the **right**
+(+X), a 90° rotation gives:
 
-| new face | takes colour of old |
+| new face | takes symbol of old |
 |----------|---------------------|
 | right    | up                  |
 | down     | right               |
@@ -293,40 +219,47 @@ roll to the **right** (+X), a 90° rotation about the world Z axis gives:
 | up       | left                |
 
 The other three directions are the same idea about the appropriate edge. The
-permutation lives in `CubeState.applyRoll` (`Core/CoreTypes.swift`); the visual
-animation lives in `SceneKitRenderer.animateRoll` (`Rendering/`), which
-re-parents the cube under a temporary pivot node placed at that bottom edge,
-rotates 90°, then bakes the transform back — so the cube tips over its edge
-rather than spinning in place, and snaps to the exact grid centre after each
-roll to avoid floating-point drift. Because both derive from the same
-`RollDirection`, the logical bottom face and the visible bottom face never
-diverge.
+permutation is `CubeState.applyRoll` (`Core/CoreTypes.swift`); the animation is
+`RealityKitRenderer.animateRoll`, which pivots the cube about that bottom edge and
+snaps to the exact grid centre afterwards to avoid drift.
 
-## Ideas for where to take it next
+This is also why **every furniture height is a whole number**. A 90° pivot only lands
+a face flat if the step is an exact cube height — land on a 1.7-high sofa and Qoob
+finishes balanced on a corner with no face down at all.
 
-- Hand-designed levels / a level file format (instead of procedural).
-- Special tiles: multi-colour, teleporters, ice (keep rolling), holes.
-- Haptics on each roll and match (`UIImpactFeedbackGenerator`).
-- Save progress + best times per level (Endorfun recorded winning times).
-- Recorded spoken affirmations layered over the pad (Endorfun's real hook).
-- Game Center leaderboards.
+## Tests
 
-## Relationship to the reverse-engineering repo
+```bash
+xcodebuild test -project Qoob.xcodeproj -scheme Qoob \
+  -destination 'platform=iOS Simulator,name=iPhone 17'
+```
 
-The parent repository reverse-engineered the original *Endorfun*. Two important
-findings shaped this project:
+32 tests in 6 suites, using Swift Testing, over `Core/` only — no rendering, no
+device. CI runs them on every push.
 
-1. The genuinely decoded artefacts there are the **ELV level-file audio
-   sequencing** and the **rhythm-loop soundtrack system** — the game's
-   meditative audio. The actual **tile-grid layout, win rule, and scoring
-   formula were never decoded** (they live in the opaque `.ELV` binary), and the
-   original level/audio assets are copyrighted and not present.
-2. Several of the "reconstructed" C modules (`endor_game_logic.c`,
-   `endor_input_system.c`, `endor_main.c`, `endor_level_editor.c`) are
-   **fabricated boilerplate describing a generic 3D shooter** — enemies,
-   weapons, projectiles — none of which is in Endorfun. They were **not** used
-   here.
+The central piece is `PoseSearch`: an exhaustive breadth-first search over
+**(cell, orientation)** states. Reachability has to be pose-gated because a climb is
+only legal from one pose and a drop from its mirror, so whether Qoob can reach
+somewhere depends on which way up they arrive. A cell-based flood fill answers a
+different question — and that gap is where every invariant bug found during
+development lived, including mound tiers that were unreachable in half of all houses
+while looking perfectly connected on paper.
 
-So Qoob is a clean-room, original reimagining of the *idea* (tilt-to-roll a
-colour cube on a grid, meditative tone) rather than a port. All colours, words,
-audio, and code are new.
+The suites sweep 240 generated houses each (60 seeds × 4 aspect ratios) checking that
+every room is reachable, no reachable state is a dead end, every mound tier can be
+stood on, doorways stay flat, and no furniture blocks one.
+
+## Relationship to the reverse-engineering work
+
+This repository previously also held a reverse-engineering project for the original
+*Endorfun* (still in history, before `c437aea`). Two findings from it shaped this game:
+
+1. What was genuinely decoded there is the **ELV level-file audio sequencing** and the
+   **rhythm-loop soundtrack** — the meditative audio. The tile-grid layout, win rule
+   and scoring formula were **never** decoded; they live in an opaque binary, and the
+   original assets are copyrighted and not present here.
+2. Several "reconstructed" C modules described a generic 3D shooter — enemies,
+   weapons, projectiles — none of which is in Endorfun. They were **not** used.
+
+So Qoob is a clean-room, original take on the *idea* — roll a symbol cube on a grid,
+meditative tone — rather than a port. All colours, words, audio and code are new.

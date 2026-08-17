@@ -23,7 +23,7 @@ enum CatSymbol: Int, CaseIterable {
     case paws = 2     // four paws
     case dot = 3      // single dot   (left)
     case ring = 4     // a ring       (right)
-    case triangle = 5 // three dots in a triangle (back)
+    case triangle = 5 // three dots in a triangle (up, along the spine)
 
     static func from(_ index: Int) -> CatSymbol {
         CatSymbol(rawValue: ((index % 6) + 6) % 6) ?? .face
