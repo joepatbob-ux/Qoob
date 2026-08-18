@@ -30,19 +30,25 @@ does, so authored houses are indistinguishable to the rest of the game.
 term goes to almost nothing, the key comes in low and cool, a window sits at the
 horizon, and table lamps carry real point lights.
 
+## Design pillars — not bugs
+
+- **No indicator for the pad, the basket or the litterbox.** One of each in a house of
+  ~1000 cells, and nothing points at them. This used to be listed here as "the weakest
+  part of play," which was wrong: finding things *is* the game. Qoob is exploratory,
+  not a race to an objective — a minimap or an arrow would remove the reason to play.
+  Leave this alone.
+
 ## Parked ideas
 
 - **Themed goals** — replace the abstract glowing pad with in-world spots: a food
   bowl, a sunbeam, a cat bed, so the objective reads diegetically.
-- **Finding the target.** One pad, one basket and one litterbox in a house of ~1000
-  cells, with no indicator. Options: an edge-of-screen arrow, a minimap, or letting the
-  camera pull back briefly on entering a house. Currently the weakest part of play.
 - **Special tiles** — slippery (keep rolling), teleport (a cat flap), holes.
 - **Distinct audio** for push vs match vs knock-off.
 - **Per-environment music.**
 - **Game Center leaderboards.** Note there is no score persistence at all right now —
   the old `ProgressStore` was removed along with levels, so this needs somewhere to
   save to first.
-- **A smoother house transition.** `present` costs ~1.3s warm and ~5s cold, which
-  shows as a hitch when the litterbox opens a new house. Either build asynchronously,
-  reuse entities, or cover it deliberately.
+- **Multiplayer.** Contemplated, not designed. Open questions before this is buildable:
+  same house at once or racing separate instances of the same seed; local (pass the
+  device, split screen) or networked; competitive (first to the litterbox) or
+  cooperative. Needs a design pass before an engineering one.

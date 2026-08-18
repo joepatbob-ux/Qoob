@@ -2416,39 +2416,74 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     ///
     /// Two entities per tier rather than one textured box. A box takes a single material
     /// on all six faces, and grass running down the vertical sides of a bank looks like a
-    /// mistake — an earth cut is what's actually there. So the body is a plain block in a
+    /// mistake — an earth cut is what's actually there. So the body is a tapered bank in a
     /// darkened ground colour and the walkable top is a plane carrying the same texture,
     /// phased to the mound's own position so the pattern runs on from the flat ground it
     /// rises out of.
     ///
-    /// Drawn a hair proud of the top face, because a plane exactly coplanar with the box
-    /// lid z-fights.
+    /// The bank is a frustum (`frustumMesh`), not a box: wide at the base and narrowing to
+    /// exactly the lid's footprint at the top, so the rise reads as a slope rather than a
+    /// stepped cliff. Qoob still climbs it in the same whole-cube-height rolls as before —
+    /// this only changes the terrain art between tiers, not `tier.level` or how a roll
+    /// resolves.
+    ///
+    /// Drawn a hair proud of the top face, because a plane exactly coplanar with the bank's
+    /// own top z-fights.
     ///
     /// The lid is inset, and that's what makes a mound visible at all. The camera looks
     /// straight down by default, so a terrace shows only its top face — and with the
     /// room's own ground on it, at the bank's full width, the first version was literally
     /// invisible: sand on sand, with the dark bank hidden behind its own lid. Pulling the
-    /// lid in leaves the bank showing as a dark ring, which reads as the edge of a
-    /// plateau the way a contour line does. It's also what a bank actually looks like —
-    /// the top of an earth slope is narrower than its base.
+    /// lid in leaves the bank's slope showing as a ring around the plateau, the way a
+    /// contour line does.
     ///
     /// This matters more than looks. Qoob climbs exactly one level per roll, so how high
     /// something is *is* the puzzle, and a step you can't see is a step you can't plan.
     private func buildHills(_ board: BoardModel) {
+        func encloses(_ tier: Terrace, contains other: Terrace) -> Bool {
+            other.origin.col >= tier.origin.col &&
+            other.origin.row >= tier.origin.row &&
+            other.origin.col + other.cols <= tier.origin.col + tier.cols &&
+            other.origin.row + other.rows <= tier.origin.row + tier.rows
+        }
         for tier in board.hills {
             let env = board.environment(at: tier.origin)
             let w = Float(tier.cols) * cubeSize
             let d = Float(tier.rows) * cubeSize
             let h = Float(tier.level) * cubeSize
 
-            let bank = ModelEntity(mesh: .generateBox(width: w, height: h, depth: d,
-                                                      cornerRadius: cubeSize * 0.06),
-                                   materials: [bankMaterial(env)])
-            bank.position = f3(0, Double(h) / 2.0, 0)
+            // `level` is an absolute height, not a rise over whatever's beneath this
+            // tier — a nested second tier sitting on top of a first still reports its
+            // own full height. A frustum built from 0 to `h` for that tier would bury
+            // most of its taper inside the tier below, leaving only a thin, barely
+            // tapered sliver exposed above the rim — which reads as a near-vertical
+            // step again, defeating the whole point of a slope. So the bank spans only
+            // the actual rise: from the top of whatever tier (if any) fully encloses
+            // this one, up to this tier's own height.
+            let floor = board.hills
+                .filter { $0.level < tier.level && encloses($0, contains: tier) }
+                .map { Float($0.level) * cubeSize }
+                .max() ?? 0
+            let rise = h - floor
+
+            // How much narrower the top is than the base. The lid has to be exactly
+            // this size too — the frustum has no top cap of its own, so a lid any
+            // smaller leaves a hole and any larger leaves it floating past the slope's
+            // own rim. Scaled to the rise, not a flat constant, so a taller tier tapers
+            // wider rather than just looking like the same shallow lean stretched
+            // higher: at inset == rise the half-taper equals the rise, a ~27° lean off
+            // vertical — the previous constant (0.34 cells) gave under 10°, which is
+            // why it still read as a wall instead of a slope.
+            let inset = max(cubeSize * 0.34, rise)
+
+            guard let bankMesh = frustumMesh(baseWidth: w, baseDepth: d,
+                                             topWidth: w - inset, topDepth: d - inset,
+                                             height: rise) else { continue }
+            let bank = ModelEntity(mesh: bankMesh, materials: [bankMaterial(env)])
+            bank.position = f3(0, Double(floor), 0)
 
             let cols = tier.origin.col..<(tier.origin.col + tier.cols)
             let rows = tier.origin.row..<(tier.origin.row + tier.rows)
-            let inset = cubeSize * 0.34
             let lid = ModelEntity(mesh: .generatePlane(width: w - inset, depth: d - inset),
                                   materials: [roomFloorMaterial(env, cols: cols, rows: rows)])
             lid.position = f3(0, Double(h) + 0.004, 0)
@@ -2459,6 +2494,56 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             holder.position = f3(tier.centerCol, 0, tier.centerRow)
             boardAnchor.addChild(holder)
         }
+    }
+
+    /// A rectangular frustum: wide at the base, narrowing linearly to `topWidth` x
+    /// `topDepth` at `height`. This is a mound's actual silhouette — a box's sides are
+    /// vertical all the way up, which reads as a stepped cliff rather than a rise.
+    ///
+    /// Built by hand rather than from a primitive: RealityKit has no tapered-box
+    /// generator. Each side is its own flat-shaded quad — faceted corners, not smoothed —
+    /// which suits a cut-earth bank. UVs run in world units along each face (its own
+    /// length by its height), matching `bankMaterial`'s one-repeat-per-cell scale
+    /// regardless of the tier's footprint.
+    private func frustumMesh(baseWidth: Float, baseDepth: Float,
+                             topWidth: Float, topDepth: Float, height: Float) -> MeshResource? {
+        let bw = baseWidth / 2, bd = baseDepth / 2
+        let tw = max(topWidth, 0) / 2, td = max(topDepth, 0) / 2
+
+        let base: [SIMD3<Float>] = [
+            SIMD3(bw, 0, bd), SIMD3(bw, 0, -bd), SIMD3(-bw, 0, -bd), SIMD3(-bw, 0, bd),
+        ]
+        let top: [SIMD3<Float>] = [
+            SIMD3(tw, height, td), SIMD3(tw, height, -td), SIMD3(-tw, height, -td), SIMD3(-tw, height, td),
+        ]
+
+        var positions: [SIMD3<Float>] = []
+        var normals: [SIMD3<Float>] = []
+        var uvs: [SIMD2<Float>] = []
+        var indices: [UInt32] = []
+
+        for i in 0..<4 {
+            let j = (i + 1) % 4
+            let b0 = base[i], b1 = base[j]
+            let t0 = top[i], t1 = top[j]
+            // Wound so the cross product points outward — verified against the +x face,
+            // where (b1 - b0) runs along -z and (t0 - b0) leans up and in, giving a normal
+            // with a positive x component as it should.
+            let normal = simd_normalize(simd_cross(b1 - b0, t0 - b0))
+            let uLen = simd_length(b1 - b0)
+            let start = UInt32(positions.count)
+            positions += [b0, b1, t1, t0]
+            normals += [normal, normal, normal, normal]
+            uvs += [SIMD2(0, 0), SIMD2(uLen, 0), SIMD2(uLen, height), SIMD2(0, height)]
+            indices += [start, start + 1, start + 2, start, start + 2, start + 3]
+        }
+
+        var descriptor = MeshDescriptor(name: "hillBank")
+        descriptor.positions = MeshBuffer(positions)
+        descriptor.normals = MeshBuffer(normals)
+        descriptor.textureCoordinates = MeshBuffer(uvs)
+        descriptor.primitives = .triangles(indices)
+        return try? MeshResource.generate(from: [descriptor])
     }
 
     /// A room's floor material, with the texture phased so the pattern runs continuously
