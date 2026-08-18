@@ -149,6 +149,10 @@ final class GameViewModel: ObservableObject {
     @Published var elapsed: TimeInterval = 0   // gentle count-up since the room began
     @Published var tilesRemaining: Int = 0
     @Published var itemsRemaining: Int = 0    // toys still loose on the floor
+    /// True for the brief cover raised while the litterbox swaps in the next house.
+    /// `present` isn't free even warm, and unlike the launch splash nothing else
+    /// hides that — see `GameController.enterNewHouse`.
+    @Published var isEnteringHouse: Bool = false
 
     /// How many toys this house started with.
     ///

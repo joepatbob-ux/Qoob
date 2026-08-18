@@ -81,6 +81,8 @@ struct ContentView: View {
 
                 overlay
 
+                housePassing
+
                 if showingSplash { splash }
             }
             // Straight into the game: a splash while the first house is built, then it
@@ -538,6 +540,23 @@ struct ContentView: View {
                 .accessibilityAddTraits(.isHeader)
         }
         .transition(.opacity)
+    }
+
+    /// A brief cover raised while the litterbox swaps in the next house.
+    ///
+    /// Same backdrop swatch as `splash`, not the room just left or the one about to
+    /// come up — neither is a known good match, and this is only up for a few hundred
+    /// milliseconds. Kept in the view tree at all times and driven by opacity rather
+    /// than `if`+`.transition`, so the fade animates from a plain `@Published` flip on
+    /// `GameViewModel` with no `withAnimation` needed at the call site — the trigger is
+    /// `GameController`, which doesn't import SwiftUI.
+    private var housePassing: some View {
+        Color(uiColor: Environment.livingRoom.background(splashAppearance))
+            .ignoresSafeArea()
+            .opacity(viewModel.isEnteringHouse ? 1 : 0)
+            .allowsHitTesting(viewModel.isEnteringHouse)
+            .animation(.easeInOut(duration: viewModel.isEnteringHouse ? 0.15 : 0.25),
+                       value: viewModel.isEnteringHouse)
     }
 
     /// Light or dark for the splash, from the same setting the rooms use.

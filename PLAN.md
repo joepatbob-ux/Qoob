@@ -176,7 +176,7 @@ won't catch visual regressions, so the screenshot isn't optional.
   than a point light: `PointLightComponent` has no `Shadow` type, so a point light lit
   the floor while every shadow still came from the directional key — light from one
   place, shadows from another.
-- **The near-black circular object — identified, no fix applied.** It is
+- **The near-black circular object — identified and retoned.** It is
   `coffeeTable2`: a *round* table (1.94 x 1.94 footprint, so it reads as a disc from
   directly above) whose material carries no texture and a base colour of
   rgb(0.23, 0.16, 0.08) — luminance 0.17, against roughly 0.40 for the colours in
@@ -192,18 +192,30 @@ won't catch visual regressions, so the screenshot isn't optional.
   material covering the whole piece. Any such rule would therefore repaint most of the
   furniture library, which is a worse outcome than one dark table.
 
-  It is a real legibility fault — a *climbable* piece that reads as a hole at night has
-  to be seen to be used — but the fix belongs in the content, not a renderer
-  heuristic: either re-tone that one asset or drop the variant from rotation. That's a
-  taste call.
+  Fixed in the content, not the renderer: `coffeeTable2.usdz`'s `Wood` material was
+  unzipped, its `UsdPreviewSurface.diffuseColor` edited from
+  `(0.0416, 0.0226, 0.0075)` linear (the rgb(0.23, 0.16, 0.08) above) to
+  `(0.1329, 0.0594, 0.0196)` linear — rgb(0.40, 0.27, 0.15), a mid-brown wood, luminance
+  ~0.29 — and rezipped uncompressed with the same single-entry layout. Verified by
+  loading the data-asset copy at runtime and reading the resulting
+  `PhysicallyBasedMaterial.baseColor.tint` back: matches exactly.
 - **`liftEmissionForNight` is not a no-op** — checked and closed. Loaded models come
   in as `PhysicallyBasedMaterial`, so the cast succeeds. The basket and litterbox turn
   out to have no bundled model at all (`Model_basket` and `Model_litterbox` don't
   exist), so both are drawn procedurally with `pbr(...)` — also
   `PhysicallyBasedMaterial`. Both are therefore lifted as intended.
-- **`present` hitch.** ~1.3s warm, ~5s cold, visible when entering a new house.
-  Measure where it goes before choosing between an async build, entity reuse, or
-  covering it with a transition.
+- **`present` hitch — measured and covered.** Instrumented `present` for one
+  in-simulator run: cold (~8s there) is almost entirely one-time shader/texture
+  compilation in `buildBoard` and `makeCubeNode`, which is what the launch splash
+  already exists to hide. Warm (every litterbox transition after) still cost ~440ms,
+  and — unlike furniture, which `modelCache` already made cheap (~30ms) — it wasn't
+  model loading: `buildBoard` (~110ms) and `makeCubeNode` (~170ms) dominate, and
+  neither caches anything across houses. Small enough, and RealityKit main-actor-bound
+  enough, that a cover reads better than chasing an async rebuild for ~150ms back.
+  `GameController.enterNewHouse` now raises a `viewModel.isEnteringHouse` cover,
+  awaits a beat for it to actually reach the screen, does the swap behind it, then
+  drops it — the same shape as the launch splash, just shorter and without the
+  wordmark (`ContentView.housePassing`).
 
 ---
 

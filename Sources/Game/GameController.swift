@@ -147,12 +147,27 @@ final class GameController {
     ///
     /// This is what makes the world feel endless: rooms aren't remembered, so there's
     /// nothing to rearrange — the next house simply isn't this one.
+    ///
+    /// `renderer.present`, which `startGame` calls into, rebuilds the whole scene and
+    /// costs a few hundred milliseconds even warm (measured: ~440ms in-simulator,
+    /// mostly the board mesh and the cube's own materials, neither of which is
+    /// cached). Unlike the launch splash, nothing here covers that by construction, so
+    /// this raises a cover of its own first, gives it a beat to actually reach the
+    /// screen, then does the swap behind it.
     private func enterNewHouse() {
         sfx { audio.playMatch(streak: 3) }
         haptic { Haptics.match() }
-        // An authored house is the one the player asked for, so it comes back rather
-        // than being swapped for a generated stranger.
-        if let authored { startGame(blueprint: authored) } else { startGame() }
+        viewModel.isEnteringHouse = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .milliseconds(200))
+            // An authored house is the one the player asked for, so it comes back
+            // rather than being swapped for a generated stranger.
+            if let authored = self.authored { self.startGame(blueprint: authored) } else { self.startGame() }
+            try? await Task.sleep(for: .milliseconds(150))
+            self.viewModel.isEnteringHouse = false
+            self.isRolling = false
+        }
     }
 
     // MARK: - Frame loop
@@ -318,11 +333,14 @@ final class GameController {
             self.game?.cube.level = targetLevel
             self.nextRollAllowedAt = CACurrentMediaTime() + self.restBetweenRolls
             self.resolveMatch()
-            self.isRolling = false
             // Reaching the litterbox ends this house and opens the next one. Checked
             // after `resolveMatch` so a tile satisfied on the way in still scores.
+            // `isRolling` stays true across the swap — `enterNewHouse` clears it once
+            // the new house is actually ready — so a roll can't land mid-transition.
             if let game = self.game, let box = game.level.litterbox, game.cube.cell == box {
                 self.enterNewHouse()
+            } else {
+                self.isRolling = false
             }
         }
     }
