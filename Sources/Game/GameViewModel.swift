@@ -194,6 +194,24 @@ final class GameViewModel: ObservableObject {
     }
     private static let roomAppearanceKey = "roomAppearance"
 
+    /// Whether rooms borrow the real local sky — real weather outdoors, real
+    /// sunrise/sunset light indoors (Settings). Persisted, and off by default:
+    /// it asks for location, and nothing that prompts should default to on.
+    ///
+    /// `.object(forKey:) as? Bool`, not `.bool(forKey:)` — the latter can't tell
+    /// "never set" from "set to false", which matters the day this default
+    /// changes. No other `Bool` in this file is persisted yet (`soundEnabled`/
+    /// `hapticsEnabled` are in-memory only), so this is the first of its kind.
+    @Published var weatherMatching: Bool {
+        didSet { UserDefaults.standard.set(weatherMatching, forKey: Self.weatherMatchingKey) }
+    }
+    private static let weatherMatchingKey = "weatherMatching"
+
+    /// Set by `GameController` from `LocalWeatherProvider`, so the Settings
+    /// footnote can explain itself when there's nothing to show. A live fact,
+    /// not a preference — not persisted.
+    @Published var weatherStatus: WeatherStatus = .off
+
     /// On-screen control arrangement (Settings). Persisted.
     @Published var controlLayout: ControlLayout {
         didSet { UserDefaults.standard.set(controlLayout.rawValue, forKey: Self.controlLayoutKey) }
@@ -293,6 +311,7 @@ final class GameViewModel: ObservableObject {
         knobPositions = Self.loadPositions()
         boardTilt = defaults.string(forKey: Self.boardTiltKey)
             .flatMap(BoardTilt.init(rawValue:)) ?? .flat
+        weatherMatching = defaults.object(forKey: Self.weatherMatchingKey) as? Bool ?? false
     }
 
     func startTapped() {

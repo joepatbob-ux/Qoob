@@ -80,8 +80,28 @@ protocol GameRenderer: AnyObject {
 
     /// Lean the camera `radians` off straight-down (0 = top-down). Re-aims live.
     func setBoardTilt(_ radians: Double)
+
+    /// Layers a live-weather/solar adjustment onto the current day/night
+    /// preset (Settings › "Match local weather"). `.cheap` only touches
+    /// already-inexpensive lights; `.full` additionally re-bakes the
+    /// environment map, so the core throttles how often it asks for that —
+    /// see `SkySystem`. Optional: a renderer with no sky model of its own
+    /// simply ignores this.
+    func applySky(_ relight: SkyRelight)
+
+    /// The outdoor weather mood has changed (e.g. clear → rain) — a cue for
+    /// spatial effects like precipitation, distinct from `applySky`'s
+    /// lighting-only concern. Optional, defaults to a no-op.
+    func setSkyCondition(_ condition: SkyCondition)
+
+    /// A lightning strike just occurred: flash briefly, using only lights the
+    /// renderer already has. Optional, defaults to a no-op.
+    func flashLightning(_ flash: LightningFlash)
 }
 
 extension GameRenderer {
     func setEnvironmentActive(_ active: Bool) {}
+    func applySky(_ relight: SkyRelight) {}
+    func setSkyCondition(_ condition: SkyCondition) {}
+    func flashLightning(_ flash: LightningFlash) {}
 }

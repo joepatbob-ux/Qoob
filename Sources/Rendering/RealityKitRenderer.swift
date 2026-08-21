@@ -67,6 +67,13 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     private var floorTheme: FloorTheme = .default
     private var catStyle: CatStyle = .cream
     private var roomAppearance: RoomAppearance = .system
+    /// Live weather/solar adjustment layered on top of the day/night preset
+    /// (Settings › "Match local weather"). `.neutral` renders byte-identical
+    /// to today — see `SkyModifier`.
+    private var skyModifier: SkyModifier = .neutral
+    /// Bumped on every environment-map bake request, so a slow bake can't
+    /// land after (and override) a newer one — see `updateEnvironmentLighting`.
+    private var envBakeGeneration: UInt64 = 0
     /// The ground plane under the board, kept so the floor can be re-skinned.
     private var groundEntity: ModelEntity?
 
@@ -166,6 +173,36 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     func setCatStyle(_ style: CatStyle) {
         catStyle = style
         restyleQoob()
+    }
+
+    /// Layers a live-weather/solar adjustment onto the current day/night preset.
+    /// `.cheap` only re-aims the already-inexpensive directional lights and nudges
+    /// the (already-baked) IBL's exposure and the background tint; `.full`
+    /// additionally re-bakes the environment map, the one genuinely expensive step
+    /// here — `SkySystem` decides how often that's actually worth asking for.
+    func applySky(_ relight: SkyRelight) {
+        skyModifier = relight.modifier
+        setupDirectionalLights()
+        view.environment.lighting.intensityExponent = light.exponent
+        view.environment.background = .color(skyTintedBackground())
+        if case .full = relight {
+            updateEnvironmentLighting()
+        }
+    }
+
+    /// The room's own background, nudged toward the sky's tint (an overcast
+    /// slate, a snow-lit pale grey-blue, ...) — a plain colour blend, no re-bake.
+    private func skyTintedBackground() -> UIColor {
+        let base = environment.background(appearance)
+        guard skyModifier.backgroundBlend > 0 else { return base }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard base.getRed(&r, green: &g, blue: &b, alpha: &a) else { return base }
+        let t = CGFloat(skyModifier.backgroundBlend)
+        let tint = skyModifier.backgroundTint
+        return UIColor(red: r + (CGFloat(tint.x) - r) * t,
+                       green: g + (CGFloat(tint.y) - g) * t,
+                       blue: b + (CGFloat(tint.z) - b) * t,
+                       alpha: a)
     }
 
     /// Which symbol each live target tile is showing, so tiles can be re-skinned on
@@ -490,7 +527,13 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // how you say "light comes from every direction", so that's what the ambient is
         // now, instead of a second directional pretending to be one.
         updateEnvironmentLighting()
+        setupDirectionalLights()
+    }
 
+    /// The key + three fills only — split out of `setupLighting` so a live-weather
+    /// relight (`applySky`) can re-aim these every frame for free without also
+    /// paying for `updateEnvironmentLighting`'s async re-bake.
+    private func setupDirectionalLights() {
         // The key is now a hint of direction rather than the light source. It was 3400
         // lux against a 2100 fill, which is a 1.6:1 ratio and reads as a sunny window on
         // one wall; the shadows were nearly black because nothing else reached into them.
@@ -537,10 +580,16 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         // own values". The map is authored at the level the room wants, so this only
         // trims between light and dark mode.
         let exponent = light.exponent
+        // Live weather can ask for this repeatedly as the sky changes; each bake takes
+        // a beat, so a slow one finishing after a newer request would otherwise splat
+        // stale lighting back over whatever's current. Only the most recent request's
+        // result is ever applied.
+        envBakeGeneration &+= 1
+        let generation = envBakeGeneration
         Task { @MainActor [weak self] in
             guard let resource = try? await EnvironmentResource(equirectangular: image,
                                                                withName: "QoobRoom"),
-                  let self else { return }
+                  let self, self.envBakeGeneration == generation else { return }
             self.view.environment.lighting.resource = resource
             self.view.environment.lighting.intensityExponent = exponent
         }
@@ -622,9 +671,42 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             keyColour: UIColor(red: 0.76, green: 0.84, blue: 1.00, alpha: 1),
             spillColour: UIColor(red: 1.00, green: 0.86, blue: 0.68, alpha: 1),
             exponent: 0.1)
+
+        /// A copy with a live-weather `SkyModifier` layered on top.
+        ///
+        /// `floorBounce` and the `spill` patch are deliberately never touched: they're
+        /// what keep a room's day/night *identity* intact while the sky above it
+        /// changes, and what keeps an indoor room's ceiling fitting or lit doorway
+        /// reading as indoors rather than also flattening under an overcast sky.
+        /// `SkyModifier`'s own doc comment covers why this can brighten/warm/cool but
+        /// never darken a room below `self`.
+        func applying(_ modifier: SkyModifier) -> RoomLight {
+            var copy = self
+            copy.window = window * modifier.windowTint * modifier.windowGain
+            copy.windowAt.y = min(0.92, max(0.08, windowAt.y + modifier.windowElevationDelta))
+            copy.windowRadius = windowRadius * modifier.windowRadiusScale
+            copy.ceiling = ceiling * modifier.ceilingScale
+            copy.wall = wall * modifier.wallScale
+            copy.keyColour = Self.tinted(keyColour, by: modifier.keyTint)
+            copy.exponent = exponent + modifier.exponentDelta
+            return copy
+        }
+
+        /// Per-channel tint, unlike `scaled(_:by:)` elsewhere which applies one
+        /// factor to all three channels alike.
+        private static func tinted(_ color: UIColor, by tint: SIMD3<Double>) -> UIColor {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            guard color.getRed(&r, green: &g, blue: &b, alpha: &a) else { return color }
+            return UIColor(red: min(1, r * CGFloat(tint.x)),
+                           green: min(1, g * CGFloat(tint.y)),
+                           blue: min(1, b * CGFloat(tint.z)),
+                           alpha: a)
+        }
     }
 
-    private var light: RoomLight { appearance == .light ? .day : .night }
+    private var light: RoomLight {
+        (appearance == .light ? RoomLight.day : RoomLight.night).applying(skyModifier)
+    }
 
     /// A latitude/longitude image of what a room looks like from the inside, used only
     /// as a light source — it's never seen, because the background stays a flat colour.
@@ -720,9 +802,18 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// grounded rather than going flat. The fills are what reach into the key's shadows,
     /// so this is the other half of stopping night crush to black — the first half being
     /// `RoomLight.night`'s bounce.
-    private var keyIntensity: Float { appearance == .light ? 2100 : 1250 }
-    private var fillIntensity: Float { appearance == .light ? 520 : 300 }
-    private var sideIntensity: Float { appearance == .light ? 330 : 210 }
+    // Scaled by `skyModifier`'s intensity fields, which `SkyModifier.make` keeps
+    // clamped to `>= 1` — live weather can raise these (an overcast sky is a big
+    // soft light source) but never cut them below today's baseline.
+    private var keyIntensity: Float {
+        (appearance == .light ? 2100 : 1250) * Float(skyModifier.keyIntensityScale)
+    }
+    private var fillIntensity: Float {
+        (appearance == .light ? 520 : 300) * Float(skyModifier.fillIntensityScale)
+    }
+    private var sideIntensity: Float {
+        (appearance == .light ? 330 : 210) * Float(skyModifier.fillIntensityScale)
+    }
 
     private func setupCamera() {
         // The 3-arg init defaults its field-of-view orientation to vertical
@@ -2137,7 +2228,21 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             attenuationRadius: 7)
         spot.attenuationFalloffExponent = 1.6
         bulb.components.set(spot)
-        bulb.components.set(SpotLightComponent.Shadow())
+
+        // A shadow is a full extra render of the scene's shadow-casters from that
+        // light's point of view, every frame — nothing else a lamp does costs
+        // remotely as much. `maxLampLights` (4) is sized against RealityKit's
+        // *hardware* light-count ceiling; shadows have no such API limit to hide
+        // behind, so left uncapped, four lamps plus the key directional's own
+        // shadow meant five full shadow passes a frame on top of everything else
+        // the scene draws — enough to measurably heat the device in play. Past
+        // `maxLampShadows` a lamp still lights the room (and still glows), it just
+        // doesn't throw its own shadow — the room's shadows come from the key and
+        // whichever lamps are still under budget.
+        if lampShadowsUsed < Self.maxLampShadows {
+            lampShadowsUsed += 1
+            bulb.components.set(SpotLightComponent.Shadow())
+        }
         node.addChild(bulb)
         // The shade has to look lit, or the pool of light appears from nowhere.
         liftEmission(node, colour: Self.lampGlow, intensity: 0.75)
@@ -2150,8 +2255,13 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// See `switchOn(lamp:surface:)` — four directionals are already spoken for.
     private static let maxLampLights = 4
 
+    /// See `switchOn(lamp:surface:)` — a shadow costs a full extra render pass, so this
+    /// stays far below `maxLampLights`.
+    private static let maxLampShadows = 1
+
     /// Reset per `present`, since the whole scene is rebuilt there.
     private var lampLightsUsed = 0
+    private var lampShadowsUsed = 0
 
     /// Lifts a subtree's emission so it stays readable with the lights off.
     ///
@@ -2421,11 +2531,12 @@ final class RealityKitRenderer: NSObject, GameRenderer {
     /// phased to the mound's own position so the pattern runs on from the flat ground it
     /// rises out of.
     ///
-    /// The bank is a frustum (`frustumMesh`), not a box: wide at the base and narrowing to
-    /// exactly the lid's footprint at the top, so the rise reads as a slope rather than a
-    /// stepped cliff. Qoob still climbs it in the same whole-cube-height rolls as before —
-    /// this only changes the terrain art between tiers, not `tier.level` or how a roll
-    /// resolves.
+    /// The bank is a smoothly curved rise (`moundMesh`), not a box or a straight-sided
+    /// frustum: wide and rounded at the base, narrowing to exactly the lid's footprint at
+    /// the top, with the taper easing in and out rather than cutting a straight ramp
+    /// between two sharp creases. Qoob still climbs it in the same whole-cube-height
+    /// rolls as before — this only changes the terrain art between tiers, not
+    /// `tier.level` or how a roll resolves.
     ///
     /// Drawn a hair proud of the top face, because a plane exactly coplanar with the bank's
     /// own top z-fights.
@@ -2467,18 +2578,25 @@ final class RealityKitRenderer: NSObject, GameRenderer {
             let rise = h - floor
 
             // How much narrower the top is than the base. The lid has to be exactly
-            // this size too — the frustum has no top cap of its own, so a lid any
-            // smaller leaves a hole and any larger leaves it floating past the slope's
-            // own rim. Scaled to the rise, not a flat constant, so a taller tier tapers
-            // wider rather than just looking like the same shallow lean stretched
-            // higher: at inset == rise the half-taper equals the rise, a ~27° lean off
-            // vertical — the previous constant (0.34 cells) gave under 10°, which is
-            // why it still read as a wall instead of a slope.
-            let inset = max(cubeSize * 0.34, rise)
+            // this size too — the mesh's top ring is a plain rectangle (see `moundMesh`),
+            // so a lid any smaller leaves a hole and any larger leaves it floating past
+            // the slope's own rim.
+            //
+            // A straight-sided taper of `inset == rise` leans only 27° off vertical, and
+            // on device that measured no differently from a plain wall: ordinary camera
+            // perspective foreshortens a flat vertical wall's top edge by about that much
+            // on its own, so the "taper" was invisible against the noise it was supposed
+            // to stand out from. Doubling the rise's reach to a 45° average lean gives
+            // `moundMesh`'s curve enough room to bow. Capped to leave at least a sliver of
+            // flat plateau on the smallest tiers, so the lid plane's width never goes to
+            // zero or negative.
+            let minPlateau = cubeSize * 0.3
+            let maxInset = max(min(w, d) - minPlateau, 0)
+            let inset = min(max(cubeSize * 0.34, rise * 2), maxInset)
 
-            guard let bankMesh = frustumMesh(baseWidth: w, baseDepth: d,
-                                             topWidth: w - inset, topDepth: d - inset,
-                                             height: rise) else { continue }
+            guard let bankMesh = moundMesh(baseWidth: w, baseDepth: d,
+                                           topWidth: w - inset, topDepth: d - inset,
+                                           height: rise) else { continue }
             let bank = ModelEntity(mesh: bankMesh, materials: [bankMaterial(env)])
             bank.position = f3(0, Double(floor), 0)
 
@@ -2496,54 +2614,131 @@ final class RealityKitRenderer: NSObject, GameRenderer {
         }
     }
 
-    /// A rectangular frustum: wide at the base, narrowing linearly to `topWidth` x
-    /// `topDepth` at `height`. This is a mound's actual silhouette — a box's sides are
-    /// vertical all the way up, which reads as a stepped cliff rather than a rise.
+    /// A mound's actual silhouette: a stack of rounded-rectangle rings swept straight
+    /// up, wide at the base and narrowing to exactly `topWidth` x `topDepth` at
+    /// `height` — a real curved rise rather than a box (vertical all the way up, reads
+    /// as a stepped cliff) or a straight-sided frustum (a flat ramp meeting the ground
+    /// and the plateau at two sharp creases, which measured no differently from a wall
+    /// under the game's own camera; see `buildHills`).
     ///
-    /// Built by hand rather than from a primitive: RealityKit has no tapered-box
-    /// generator. Each side is its own flat-shaded quad — faceted corners, not smoothed —
-    /// which suits a cut-earth bank. UVs run in world units along each face (its own
-    /// length by its height), matching `bankMaterial`'s one-repeat-per-cell scale
-    /// regardless of the tier's footprint.
-    private func frustumMesh(baseWidth: Float, baseDepth: Float,
-                             topWidth: Float, topDepth: Float, height: Float) -> MeshResource? {
-        let bw = baseWidth / 2, bd = baseDepth / 2
-        let tw = max(topWidth, 0) / 2, td = max(topDepth, 0) / 2
+    /// Two curves run through the stack, not one. Ring height climbs *linearly* with
+    /// ring index, so the rings are evenly spaced; each ring's footprint (and how
+    /// rounded its corners are) shrinks along `smoothstep` of that same height
+    /// fraction. Coupling footprint to an eased function of height — rather than
+    /// sizing and height off the same raw step — is what makes the profile a genuine
+    /// curve instead of a straight ramp re-parametrized: `smoothstep` has zero slope
+    /// at both ends, so the surface lies flat against the ground at the toe and flat
+    /// against the plateau at the brow, with no crease at either seam. Had both height
+    /// and footprint shared the same eased parameter instead, they'd cancel back out
+    /// to a straight line — a curve needs the two to disagree.
+    ///
+    /// Corner rounding eases out to nothing by the last ring, so the rim is a plain
+    /// rectangle — exactly what the lid plane is, with no gap or overhang at the seam.
+    /// The base stays rounded, blending into the flat ground around it rather than
+    /// meeting it at a right-angled corner.
+    ///
+    /// Normals come from the built surface by finite difference rather than a closed
+    /// form: nothing this shape does (rounding, tapering, un-rounding) has one, and a
+    /// numeric normal is automatically smooth wherever the surface is.
+    private func moundMesh(baseWidth: Float, baseDepth: Float,
+                           topWidth: Float, topDepth: Float, height: Float,
+                           rings: Int = 10, segmentsPerCorner: Int = 4) -> MeshResource? {
+        guard height > 0 else { return nil }
+        let topW = max(topWidth, 0), topD = max(topDepth, 0)
+        let baseCorner = min(baseWidth, baseDepth) * 0.3
 
-        let base: [SIMD3<Float>] = [
-            SIMD3(bw, 0, bd), SIMD3(bw, 0, -bd), SIMD3(-bw, 0, -bd), SIMD3(-bw, 0, bd),
-        ]
-        let top: [SIMD3<Float>] = [
-            SIMD3(tw, height, td), SIMD3(tw, height, -td), SIMD3(-tw, height, -td), SIMD3(-tw, height, td),
-        ]
+        func smoothstep(_ t: Float) -> Float { t * t * (3 - 2 * t) }
+        func lerp(_ a: Float, _ b: Float, _ t: Float) -> Float { a + (b - a) * t }
 
-        var positions: [SIMD3<Float>] = []
-        var normals: [SIMD3<Float>] = []
-        var uvs: [SIMD2<Float>] = []
-        var indices: [UInt32] = []
-
-        for i in 0..<4 {
-            let j = (i + 1) % 4
-            let b0 = base[i], b1 = base[j]
-            let t0 = top[i], t1 = top[j]
-            // Wound so the cross product points outward — verified against the +x face,
-            // where (b1 - b0) runs along -z and (t0 - b0) leans up and in, giving a normal
-            // with a positive x component as it should.
-            let normal = simd_normalize(simd_cross(b1 - b0, t0 - b0))
-            let uLen = simd_length(b1 - b0)
-            let start = UInt32(positions.count)
-            positions += [b0, b1, t1, t0]
-            normals += [normal, normal, normal, normal]
-            uvs += [SIMD2(0, 0), SIMD2(uLen, 0), SIMD2(uLen, height), SIMD2(0, height)]
-            indices += [start, start + 1, start + 2, start, start + 2, start + 3]
+        var rows: [[SIMD3<Float>]] = []
+        for i in 0..<rings {
+            let t = Float(i) / Float(rings - 1)
+            let y = height * t
+            let sizeT = smoothstep(t)
+            let hw = lerp(baseWidth, topW, sizeT) / 2
+            let hd = lerp(baseDepth, topD, sizeT) / 2
+            let corner = baseCorner * (1 - sizeT)
+            let outline = roundedRectOutline(halfWidth: hw, halfDepth: hd,
+                                             cornerRadius: corner, segmentsPerCorner: segmentsPerCorner)
+            rows.append(outline.map { SIMD3($0.x, y, $0.y) })
         }
 
-        var descriptor = MeshDescriptor(name: "hillBank")
+        let segs = rows[0].count
+        var positions: [SIMD3<Float>] = []
+        var uvs: [SIMD2<Float>] = []
+        for ring in rows {
+            var u: Float = 0
+            for j in ring.indices {
+                if j > 0 { u += simd_distance(ring[j], ring[j - 1]) }
+                uvs.append(SIMD2(u, ring[j].y))
+            }
+        }
+        for ring in rows { positions += ring }
+
+        // Central difference along the ring and up the stack; one-sided at the two
+        // open ends, since the mesh caps neither — the ground and the lid do.
+        var normals: [SIMD3<Float>] = []
+        for i in 0..<rings {
+            for j in 0..<segs {
+                let here = rows[i][j]
+                let around = rows[i][(j + 1) % segs] - rows[i][(j - 1 + segs) % segs]
+                let up = rows[min(rings - 1, i + 1)][j] - rows[max(0, i - 1)][j]
+
+                var normal = simd_cross(up, around)
+                if simd_length(normal) < 1e-8 { normal = SIMD3(here.x, 0, here.z) }
+                normal = simd_normalize(normal)
+                // The horizontal direction from the vertical axis out to this point is
+                // always the way the surface should face; anything that disagrees with
+                // it slipped in with the wrong sign somewhere upstream.
+                if simd_dot(normal, SIMD3(here.x, 0, here.z)) < 0 { normal = -normal }
+                normals.append(normal)
+            }
+        }
+
+        var indices: [UInt32] = []
+        for i in 0..<(rings - 1) {
+            for j in 0..<segs {
+                let j2 = (j + 1) % segs
+                let a = UInt32(i * segs + j)
+                let b = UInt32(i * segs + j2)
+                let c = UInt32((i + 1) * segs + j)
+                let d = UInt32((i + 1) * segs + j2)
+                indices += [a, c, b, b, c, d]
+            }
+        }
+
+        var descriptor = MeshDescriptor(name: "mound")
         descriptor.positions = MeshBuffer(positions)
         descriptor.normals = MeshBuffer(normals)
         descriptor.textureCoordinates = MeshBuffer(uvs)
         descriptor.primitives = .triangles(indices)
         return try? MeshResource.generate(from: [descriptor])
+    }
+
+    /// A closed outline of a rectangle with rounded corners, sampled at a fixed point
+    /// count regardless of size — so every ring in a tapering sweep like `moundMesh`
+    /// has matching indices to stitch against its neighbours. Traced clockwise as seen
+    /// from above (+x+z, +x-z, -x-z, -x+z), the same winding `moundMesh`'s stitching
+    /// assumes.
+    private func roundedRectOutline(halfWidth: Float, halfDepth: Float,
+                                    cornerRadius: Float, segmentsPerCorner: Int) -> [SIMD2<Float>] {
+        let r = max(0, min(cornerRadius, min(halfWidth, halfDepth)))
+        let centers: [SIMD2<Float>] = [
+            SIMD2(halfWidth - r, halfDepth - r),      // toward +x+z
+            SIMD2(halfWidth - r, -(halfDepth - r)),   // toward +x-z
+            SIMD2(-(halfWidth - r), -(halfDepth - r)),// toward -x-z
+            SIMD2(-(halfWidth - r), halfDepth - r),   // toward -x+z
+        ]
+        var points: [SIMD2<Float>] = []
+        points.reserveCapacity(centers.count * segmentsPerCorner)
+        for (k, center) in centers.enumerated() {
+            let start = (1 - Float(k)) * .pi / 2   // 90°, 0°, -90°, -180°
+            for s in 0..<segmentsPerCorner {
+                let angle = start - Float(s) / Float(segmentsPerCorner) * (.pi / 2)
+                points.append(center + SIMD2(cos(angle), sin(angle)) * r)
+            }
+        }
+        return points
     }
 
     /// A room's floor material, with the texture phased so the pattern runs continuously

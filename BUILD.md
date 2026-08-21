@@ -37,6 +37,26 @@ new file needs only a regenerate — no project editing.
 - **New files don't compile until you regenerate.** If a test you just wrote appears
   not to run — the count doesn't go up — this is why.
 
+## Live weather (WeatherKit)
+
+Settings' "Match local weather" needs a real Team ID and the WeatherKit capability
+enabled on that team's App ID — neither of which XcodeGen or this repo can set up for
+you:
+
+1. A paid Apple Developer Program membership (WeatherKit isn't on the free tier).
+2. Register a real App ID on the [Apple Developer portal](https://developer.apple.com/account)
+   (the placeholder `com.example.qoob` will never provision) and enable **WeatherKit**
+   on it under App Services.
+3. Put your Team ID and the real bundle identifier into `project.yml`
+   (`DEVELOPMENT_TEAM`, `PRODUCT_BUNDLE_IDENTIFIER` — and the `QoobTests` target's
+   bundle ID, which is derived from it) and regenerate.
+
+Without this, the toggle still works — it just can't reach WeatherKit, so it falls
+back to today's fixed day/night lighting (`LocalWeatherProvider.status` reports
+`.unavailable`, surfaced as a footnote in Settings). Everything about the feature
+*except the live fetch itself* is fully testable without it — see `SkySystem`/
+`SkyModel.swift`'s unit tests and `LocalWeatherProvider`'s `#if DEBUG` override.
+
 ## Tests
 
 ```bash

@@ -18,6 +18,15 @@ final class GameController {
     private let viewModel: GameViewModel
     private let pad = ControllerInput()
     private let audio = AudioEngine()
+    /// Live-weather/solar model (Settings › "Match local weather"). Polled once a
+    /// frame in `tick()`, the same shape as `pad` — see `updateSky()`.
+    private let sky = SkySystem()
+    /// The WeatherKit + CoreLocation edge feeding `sky`. Kept separate from the
+    /// pure-model `sky` so a fetch failure or a denied permission never reaches
+    /// past "no snapshot" — see `LocalWeatherProvider`.
+    private let weather = LocalWeatherProvider()
+    /// A lightning flash's thunderclap, scheduled but not yet due.
+    private var pendingThunder: (fireAt: CFTimeInterval, distance: Double)?
 
     // Game state
     /// The house being played, or nil before the first `startGame`.
@@ -64,6 +73,10 @@ final class GameController {
         self.viewModel = viewModel
 
         audio.setEnabled(viewModel.soundEnabled)
+        weather.onStatusChange = { [weak viewModel] status in viewModel?.weatherStatus = status }
+        // Resumes a previously-granted permission without prompting again; a
+        // fresh grant only ever happens from `setWeatherMatching(true)`.
+        if viewModel.weatherMatching { weather.startIfAuthorized() }
         startDisplayLink()
     }
 
@@ -111,6 +124,8 @@ final class GameController {
         renderer.setCatStyle(viewModel.catStyle)
         renderer.setRoomAppearance(viewModel.roomAppearance)
         renderer.setBoardTilt(viewModel.boardTilt.radians)
+        renderer.applySky(.full(sky.modifier))
+        renderer.setSkyCondition(sky.condition)
         renderer.present(level: level, board: board, cube: cube)
 
         isRolling = false
@@ -196,6 +211,8 @@ final class GameController {
         // per-level "best time" records stay meaningful; it never ends the level.
         viewModel.elapsed = currentElapsed()
 
+        updateSky()
+
         // Held inputs, in preference order. All three report the direction currently
         // held rather than firing events, so `requestRoll`'s pacing turns a held
         // thumb or a held d-pad into the same steady walk rather than a scramble —
@@ -213,6 +230,30 @@ final class GameController {
 
     private func currentElapsed() -> TimeInterval {
         bankedElapsed + max(0, CACurrentMediaTime() - runStartTime)
+    }
+
+    /// Advances the live-weather model and forwards whatever changed to the
+    /// renderer — and, on a lightning strike, schedules the thunderclap that
+    /// follows it. Same "poll once a frame" shape as `pad`, so weather-driven
+    /// effects go through the one place that already owns pacing and the
+    /// Sound toggle rather than the renderer calling back up into audio.
+    private func updateSky() {
+        let now = Date()
+        let monotonic = CACurrentMediaTime()
+        weather.refreshIfNeeded(now: now)
+        sky.ingest(weather.snapshot, now: now)
+        sky.update(now: now, monotonic: monotonic,
+                  isNightPreset: viewModel.roomAppearance == .dark)
+        if let relight = sky.consumeRelight() { renderer.applySky(relight) }
+        if let condition = sky.consumeConditionChange() { renderer.setSkyCondition(condition) }
+        if let flash = sky.pollLightning(monotonic: monotonic) {
+            renderer.flashLightning(flash)
+            pendingThunder = (monotonic + flash.thunderDelay, flash.thunderDistance)
+        }
+        if let pending = pendingThunder, monotonic >= pending.fireAt {
+            pendingThunder = nil
+            // Thunder synthesis (AudioEngine.playThunder) arrives in a later phase.
+        }
     }
 
     /// Whether any of the four rolls is currently legal, pose rules included.
@@ -402,6 +443,8 @@ final class GameController {
         stopDisplayLink()
         audio.stop()
         renderer.setEnvironmentActive(false)
+        // A strike seen behind the sheet shouldn't clap once play resumes.
+        pendingThunder = nil
     }
 
     func resume() {
@@ -411,6 +454,9 @@ final class GameController {
         audio.setEnabled(viewModel.soundEnabled)
         renderer.setEnvironmentActive(true)
         startDisplayLink()
+        // A long time in the background is exactly when the real sky has moved
+        // on the most, so don't wait for the next scheduled refresh.
+        weather.refreshIfNeeded(now: Date())
     }
 
     /// Live sound on/off from Settings. The ambient pad is part of "sound", so
@@ -429,6 +475,24 @@ final class GameController {
 
     /// Live board-tilt change from Settings.
     func setBoardTilt(_ tilt: BoardTilt) { renderer.setBoardTilt(tilt.radians) }
+
+    /// Settings › "Match local weather", toggled.
+    ///
+    /// Turning it on is the one call site allowed to show the location
+    /// permission prompt (`LocalWeatherProvider.start()`); turning it off
+    /// drops the fetch and snaps the sky straight back to neutral rather than
+    /// waiting for the next tick to notice.
+    func setWeatherMatching(_ on: Bool) {
+        if on {
+            weather.start()
+            return
+        }
+        weather.stop()
+        sky.reset()
+        pendingThunder = nil
+        if let relight = sky.consumeRelight() { renderer.applySky(relight) }
+        renderer.setSkyCondition(sky.condition)
+    }
 
     deinit {
         displayLink?.invalidate()

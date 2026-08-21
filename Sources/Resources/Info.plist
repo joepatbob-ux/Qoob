@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Qoob uses your approximate location to match the weather and the sunrise in your rooms to the real sky outside.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

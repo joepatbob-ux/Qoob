@@ -105,6 +105,21 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                // Needs a location, which tvOS has no meaningful prompt flow for.
+                #if !os(tvOS)
+                Section("Weather") {
+                    Toggle("Match local weather", isOn: $viewModel.weatherMatching)
+                    Text("Rooms borrow the real sky: rain and snow out in the yard, warm light through the window at sunrise and sunset, and lightning in a storm. Uses your approximate location, never a precise one.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    if viewModel.weatherMatching {
+                        weatherStatusFootnote
+                        Link("Weather", destination: URL(string: "https://weatherkit.apple.com/legal-attribution.html")!)
+                            .font(.footnote)
+                    }
+                }
+                #endif
             }
             .navigationTitle("Settings")
             #if !os(tvOS)
@@ -117,6 +132,26 @@ struct SettingsView: View {
             }
         }
     }
+
+    #if !os(tvOS)
+    /// What to say about weather status when there's nothing on screen to show
+    /// it — a permission that was never granted, or a fetch that isn't working.
+    @ViewBuilder
+    private var weatherStatusFootnote: some View {
+        switch viewModel.weatherStatus {
+        case .denied:
+            Text("Location is off for Qoob, so the usual light is being used. Turn it on in Settings › Privacy & Security › Location Services.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .unavailable:
+            Text("The weather couldn't be reached, so the usual light is being used.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .off, .requesting, .live:
+            EmptyView()
+        }
+    }
+    #endif
 }
 
 #Preview {

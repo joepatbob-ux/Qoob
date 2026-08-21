@@ -36,6 +36,16 @@ struct ContentView: View {
             ZStack {
                 GameView(viewModel: viewModel)
                     .ignoresSafeArea()
+                    // An upward swipe starts low on the screen, right where iOS
+                    // reserves a strip for its own home-indicator/app-switcher
+                    // gesture. Without this, that swipe never reaches
+                    // `UISwipeGestureRecognizer` at all — the system claims it
+                    // first — so "swipe up" silently did nothing while the other
+                    // three directions, which don't start at a screen edge,
+                    // worked fine. tvOS has no home indicator to defer.
+                    #if os(iOS)
+                    .defersSystemGestures(on: .vertical)
+                    #endif
 
                 if viewModel.phase == .playing {
                     // The on-screen controls are touch-only, and tvOS has no touch
@@ -175,6 +185,9 @@ struct ContentView: View {
         }
         .onChange(of: viewModel.soundEnabled) { _, enabled in
             viewModel.controller?.setSoundEnabled(enabled)
+        }
+        .onChange(of: viewModel.weatherMatching) { _, on in
+            viewModel.controller?.setWeatherMatching(on)
         }
         // Hand the frame loop, motion feed, soundscape and clock back to the
         // system whenever the board isn't the player's focus: off screen, or

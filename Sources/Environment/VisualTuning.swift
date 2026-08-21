@@ -3,9 +3,9 @@
 //  Qoob
 //
 //  ONE place for every "feel" constant added by the visual-polish layer:
-//  Qoob's soft-body squash, the shared wind, the fur, and the grass. None of
-//  these values touch gameplay, level logic, camera behaviour, or the roll
-//  itself — they only affect how things *look*.
+//  Qoob's soft-body squash, the shared wind, the fur, the grass, and live
+//  weather/solar lighting. None of these values touch gameplay, level logic,
+//  camera behaviour, or the roll itself — they only affect how things *look*.
 //
 //  Tweak a number here, rebuild, and the effect changes; no logic edits needed.
 //  Values are deliberately conservative (subtle > showy). Bump the *amount*
@@ -141,6 +141,40 @@ struct GrassConfig {
     var maxLean: Double = 0.75
 }
 
+// MARK: - Sky (live weather / solar lighting)
+
+/// Parameters for `SkySystem`, the driver behind Settings' "Match local
+/// weather": how wide golden hour is, how cautiously the expensive part of a
+/// relight (the environment-map re-bake) is asked for, and how often a
+/// lightning strike comes up during a storm.
+struct SkyConfig {
+    /// Seconds either side of real sunrise/sunset that count as golden hour.
+    var goldenHalfWidth: TimeInterval = 2400          // 40 minutes
+    /// Half-width of the day/night crossover ramp, seconds either side of
+    /// sunrise/sunset.
+    var twilightHalfWidth: TimeInterval = 1200        // 20 minutes
+    /// Weather and golden-hour effects are scaled by this much under the
+    /// night preset, whose window already stands for the moon rather than
+    /// the sun.
+    var nightModifierScale: Double = 0.35
+
+    /// Minimum seconds between full environment-map re-bakes — the one
+    /// genuinely expensive step in a relight. The cheap directional-light
+    /// update runs every frame regardless, so this only throttles the IBL,
+    /// never the visible smoothness of a golden-hour ramp.
+    var minBakeInterval: Double = 20
+    /// How much the IBL-bearing fields of `SkyModifier` must move before a
+    /// re-bake is worth its cost.
+    var bakeEpsilon: Double = 0.03
+
+    /// How often a live weather fetch is refreshed while the setting is on.
+    var refreshInterval: TimeInterval = 1800          // 30 minutes
+
+    /// Bounds on the random gap between lightning strikes during a storm.
+    var lightningMinInterval: Double = 9
+    var lightningMaxInterval: Double = 90
+}
+
 // MARK: - Aggregated defaults
 
 /// The single set of live defaults. Controllers read from here unless handed a
@@ -150,4 +184,5 @@ enum VisualTuning {
     static var qoob = QoobSoftBodyConfig()
     static var fur = FurConfig()
     static var grass = GrassConfig()
+    static var sky = SkyConfig()
 }
