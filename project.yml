@@ -16,6 +16,14 @@
 #  ControllerInput and the touch-only sections of ContentView/GameControls.
 #
 name: Qoob
+# Pins the project's recorded "last upgrade check" to the Xcode version in use
+# (27.0 -> 2700). XcodeGen otherwise hardcodes an old default (1430, ~Xcode
+# 14.3) on every regenerate, which makes Xcode think the settings baseline is
+# perpetually stale and re-show "Update to Recommended Settings" on every
+# open — even for settings that are already correct. Bump this when the team
+# moves to a newer Xcode.
+attributes:
+  LastUpgradeCheck: "2700"
 options:
   bundleIdPrefix: com.example
   deploymentTarget:
@@ -25,6 +33,15 @@ options:
     iOS: "18.0"
     tvOS: "26.0"        # RealityKit's ARView only reached tvOS in 26
   createIntermediateGroups: true
+
+# Project-level settings so Xcode's "recommended settings" prompt (Dead Code
+# Stripping, User Script Sandboxing) has nothing left to offer — settings made
+# only through that dialog live in the generated, gitignored .xcodeproj and are
+# wiped out by the next `xcodegen generate`.
+settings:
+  base:
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
 
 targets:
   Qoob:
@@ -38,6 +55,13 @@ targets:
       # `Model_*.dataset` Data Sets, so they need no entry here (or in
       # project.pbxproj) — the asset catalogue is a single folder reference and
       # actool compiles whatever is inside it. See BUILD.md.
+    # For "Match local weather" (Settings). At the repo root rather than under
+    # Sources/, so it isn't swept up by the glob above. Requires a real Team ID
+    # and the WeatherKit capability enabled on that team's App ID — see BUILD.md.
+    entitlements:
+      path: Qoob.entitlements
+      properties:
+        com.apple.developer.weatherkit: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.qoob
@@ -54,6 +78,7 @@ targets:
         DEVELOPMENT_TEAM: ""
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
+        DEAD_CODE_STRIPPING: YES
     scheme:
       testTargets:
         - QoobTests
@@ -76,3 +101,4 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.qoob.tests
         GENERATE_INFOPLIST_FILE: YES
         TARGETED_DEVICE_FAMILY: "1,2"
+        DEAD_CODE_STRIPPING: YES
